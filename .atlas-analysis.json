@@ -1,0 +1,122 @@
+{
+  "projectType": "saas",
+  "projectName": "Start UI [web]",
+  "projectDescription": "Opinionated full-stack React starter with TanStack Start, TypeScript, Tailwind CSS, Prisma, and Better Auth",
+  "theme": "mint",
+  "primaryColor": "#7c7c7c",
+  "lightColor": "#070707",
+  "darkColor": "#c7c7c7",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation",
+              "project-structure"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "core-concepts/routing",
+              "core-concepts/state-management",
+              "core-concepts/data-fetching",
+              "core-concepts/environment-variables"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/authentication",
+              "features/database",
+              "features/forms",
+              "features/file-uploads",
+              "features/email",
+              "features/internationalization"
+            ]
+          },
+          {
+            "group": "UI Components",
+            "pages": [
+              "components/overview",
+              "components/theming",
+              "components/styling",
+              "components/storybook"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/testing",
+              "development/e2e-testing",
+              "development/linting",
+              "development/dev-tools"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/building",
+              "deployment/docker",
+              "deployment/production"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "API",
+            "pages": [
+              "api/overview",
+              "api/account",
+              "api/book",
+              "api/genre",
+              "api/user",
+              "api/config"
+            ]
+          },
+          {
+            "group": "Database",
+            "pages": [
+              "database/schema",
+              "database/prisma"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "TanStack Start (React Router & SSR)",
+    "TypeScript with strict type checking",
+    "Better Auth authentication system",
+    "Prisma ORM with PostgreSQL",
+    "oRPC for type-safe API",
+    "shadcn/ui component library",
+    "Tailwind CSS styling",
+    "React Hook Form validation",
+    "File upload with Better Upload",
+    "Email templates with React Email",
+    "Internationalization (i18next)",
+    "Storybook component development",
+    "Vitest unit testing",
+    "Playwright E2E testing"
+  ],
+  "publicApiSurface": [
+    "account router (getProfile, updateProfile)",
+    "book router (list, create, update, delete)",
+    "genre router (list, create, update, delete)",
+    "user router (list, create, update, delete)",
+    "config router (getConfig)",
+    "Authentication (Better Auth)",
+    "File uploads (Better Upload)",
+    "Email sending (Nodemailer + React Email)"
+  ]
+}
