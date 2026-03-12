@@ -1,0 +1,501 @@
+---
+title: 'Styling'
+description: 'Master Tailwind CSS utilities, responsive design, and styling patterns'
+icon: 'paintbrush'
+---
+
+Start UI [web] uses Tailwind CSS 4 for styling, providing a utility-first approach with excellent developer experience and performance.
+
+## Tailwind CSS 4
+
+The project uses the latest Tailwind CSS 4 with native CSS imports:
+
+```css
+@import 'tailwindcss';
+@import 'tw-animate-css';
+```
+
+<Info>
+Tailwind CSS 4 introduces a new PostCSS-based architecture with improved performance and native CSS features.
+</Info>
+
+## Utility Classes
+
+Tailwind provides utility classes for common styling needs:
+
+### Layout
+
+```tsx
+<div className="flex items-center justify-between gap-4">
+  <div className="flex-1">Flex child</div>
+  <div className="shrink-0">Fixed width</div>
+</div>
+
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  <div>Grid item</div>
+</div>
+```
+
+### Spacing
+
+```tsx
+<div className="p-4 m-2 space-y-4">
+  <div className="px-6 py-3">Padding</div>
+  <div className="mx-auto max-w-4xl">Centered</div>
+</div>
+```
+
+### Typography
+
+```tsx
+<div className="space-y-2">
+  <h1 className="text-3xl font-bold tracking-tight">Heading</h1>
+  <p className="text-sm text-muted-foreground leading-relaxed">
+    Body text with muted color
+  </p>
+  <span className="text-2xs font-medium">Small label</span>
+</div>
+```
+
+### Colors
+
+```tsx
+<div className="bg-primary text-primary-foreground">
+  Primary background
+</div>
+
+<div className="bg-destructive text-destructive-foreground">
+  Destructive background
+</div>
+
+<div className="border border-border text-foreground">
+  Default border and text
+</div>
+```
+
+## Class Variance Authority (CVA)
+
+Components use CVA for type-safe variant management:
+
+```tsx
+import { cva, type VariantProps } from 'class-variance-authority';
+import { cn } from '@/lib/tailwind/utils';
+
+const buttonVariants = cva(
+  // Base classes
+  "relative inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors outline-none focus-visible:ring-2",
+  {
+    variants: {
+      variant: {
+        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+        ghost: 'hover:bg-accent hover:text-accent-foreground',
+        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+      },
+      size: {
+        default: 'h-9 px-4',
+        sm: 'h-8 px-3 text-xs',
+        lg: 'h-10 px-6',
+        icon: 'size-9',
+      },
+    },
+    // Combine multiple variants
+    compoundVariants: [
+      {
+        variant: 'ghost',
+        size: 'sm',
+        class: 'hover:bg-accent/50',
+      },
+    ],
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
+    },
+  }
+);
+
+type ButtonProps = React.ComponentProps<'button'> &
+  VariantProps<typeof buttonVariants>;
+
+export function Button({ className, variant, size, ...props }: ButtonProps) {
+  return (
+    <button
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  );
+}
+```
+
+## The `cn()` Utility
+
+The `cn()` utility combines `clsx` and `tailwind-merge` for intelligent class merging:
+
+```tsx
+import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+```
+
+### Usage Examples
+
+```tsx
+// Conditional classes
+const className = cn(
+  'base-class',
+  isActive && 'active-class',
+  isDisabled && 'opacity-50',
+  error && 'border-destructive'
+);
+
+// Merge conflicting classes (last wins)
+const merged = cn('p-4', 'p-2'); // Result: 'p-2'
+
+// Array of classes
+const classes = cn([
+  'flex',
+  'items-center',
+  isLarge ? 'gap-4' : 'gap-2'
+]);
+
+// Object syntax
+const objectClasses = cn({
+  'bg-primary': isPrimary,
+  'bg-secondary': !isPrimary,
+  'text-white': true,
+});
+```
+
+## Responsive Design
+
+Tailwind provides responsive breakpoints:
+
+```tsx
+<div className="
+  w-full           // Mobile first (< 640px)
+  sm:w-1/2         // Small screens (≥ 640px)
+  md:w-1/3         // Medium screens (≥ 768px)
+  lg:w-1/4         // Large screens (≥ 1024px)
+  xl:w-1/5         // Extra large (≥ 1280px)
+  2xl:w-1/6        // 2X large (≥ 1536px)
+">
+  Responsive width
+</div>
+```
+
+### Custom Breakpoints
+
+Additional breakpoints are available:
+
+```tsx
+<div className="
+  grid-cols-1      // Default
+  2xs:grid-cols-2  // ≥ 384px
+  xs:grid-cols-3   // ≥ 512px
+  sm:grid-cols-4   // ≥ 640px
+">
+  Custom breakpoint grid
+</div>
+```
+
+## Container Queries
+
+Components can respond to container size:
+
+```tsx
+<div className="@container">
+  <div className="@lg:flex @lg:gap-4">
+    {/* Layout changes based on container size */}
+  </div>
+</div>
+```
+
+## Dark Mode Styling
+
+Use the `dark:` prefix for dark mode variants:
+
+```tsx
+<div className="
+  bg-white text-black
+  dark:bg-neutral-900 dark:text-white
+  border border-neutral-200 dark:border-neutral-800
+">
+  Content that adapts to theme
+</div>
+
+<button className="
+  bg-primary text-primary-foreground
+  hover:bg-primary/90
+  dark:hover:bg-primary/80
+">
+  Theme-aware button
+</button>
+```
+
+## State Variants
+
+Style based on element state:
+
+```tsx
+// Hover, focus, active
+<button className="
+  hover:bg-accent
+  focus:ring-2 focus:ring-ring
+  active:scale-95
+  disabled:opacity-50 disabled:pointer-events-none
+">
+  Interactive button
+</button>
+
+// Group hover
+<div className="group">
+  <div className="group-hover:opacity-100 opacity-0">
+    Appears on parent hover
+  </div>
+</div>
+
+// Peer state
+<input type="checkbox" className="peer" />
+<label className="peer-checked:font-bold">
+  Bold when checked
+</label>
+
+// Data attributes
+<div data-state="open" className="data-[state=open]:block hidden">
+  Shown when data-state is 'open'
+</div>
+
+// Aria attributes
+<button aria-invalid className="aria-invalid:border-destructive">
+  Invalid state
+</button>
+```
+
+## Component Slot Pattern
+
+Components use data-slot attributes for styling:
+
+```tsx
+export function Card({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="card"
+      className={cn('rounded-lg border bg-card', className)}
+      {...props}
+    />
+  );
+}
+
+// Style child slots from parent
+<div className="[&_[data-slot=card]]:shadow-lg">
+  <Card>Card with shadow from parent</Card>
+</div>
+```
+
+## Advanced Selectors
+
+### Arbitrary Variants
+
+```tsx
+// Custom state selectors
+<div className="[&[data-loading=true]]:animate-pulse">
+  Custom selector
+</div>
+
+// Has child selector
+<div className="has-[>button]:bg-accent">
+  Background if contains button
+</div>
+
+// SVG styling
+<button className="[&_svg]:size-4 [&_svg]:text-current">
+  <MailIcon /> Button with icon
+</button>
+```
+
+### Parent Selectors
+
+```tsx
+// Hover on parent affects child
+<a className="group">
+  <span className="[a:hover_&]:underline">
+    Underlines when anchor is hovered
+  </span>
+</a>
+
+// Multiple parent selectors
+<button className="[a:hover_&]:bg-primary/90 [button:hover_&]:bg-primary/90">
+  Works in anchor or button parent
+</button>
+```
+
+## Custom Animations
+
+Custom animations are defined in `src/styles/app.css`:
+
+```css
+@layer components {
+  @keyframes caret-blink {
+    0%, 70%, 100% { opacity: 1; }
+    20%, 50% { opacity: 0; }
+  }
+
+  .animate-caret-blink {
+    animation: caret-blink 1.25s ease-out infinite;
+  }
+
+  @keyframes float-in-space {
+    0%, 100% { transform: translate(-10px, 10px) rotate(-2deg); }
+    50% { transform: translate(20px, -20px) rotate(5deg); }
+  }
+
+  .animate-float-in-space {
+    animation: float-in-space 8s ease-in-out infinite;
+  }
+}
+```
+
+Usage:
+
+```tsx
+<div className="animate-caret-blink">|</div>
+<div className="animate-float-in-space">🎈</div>
+```
+
+## Performance Best Practices
+
+<Steps>
+  <Step title="Avoid Arbitrary Values">
+    Use Tailwind's design system values instead of arbitrary ones:
+    ```tsx
+    // Good
+    <div className="p-4 text-sm" />
+    
+    // Avoid when possible
+    <div className="p-[17px] text-[13px]" />
+    ```
+  </Step>
+  <Step title="Extract Repeated Patterns">
+    Create reusable variants with CVA for repeated style patterns.
+  </Step>
+  <Step title="Use Design Tokens">
+    Reference theme colors instead of hardcoded values:
+    ```tsx
+    // Good
+    <div className="bg-primary text-primary-foreground" />
+    
+    // Avoid
+    <div className="bg-blue-600 text-white" />
+    ```
+  </Step>
+  <Step title="Minimize Runtime Classes">
+    Avoid computing class names at runtime when possible. Prefer static classes or CVA variants.
+  </Step>
+</Steps>
+
+## Real-World Examples
+
+### Input Component
+
+```tsx
+import { cn } from '@/lib/tailwind/utils';
+
+export function Input({
+  className,
+  disabled,
+  ...props
+}: React.ComponentProps<'input'>) {
+  return (
+    <input
+      className={cn(
+        // Base styles
+        'flex h-9 w-full rounded-md border border-input',
+        'bg-background px-3 py-1 text-sm',
+        'transition-colors',
+        // Focus state
+        'focus-visible:outline-none focus-visible:ring-2',
+        'focus-visible:ring-ring focus-visible:ring-offset-2',
+        // Disabled state
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        // Invalid state
+        'aria-invalid:border-destructive aria-invalid:ring-destructive/20',
+        // Custom classes
+        className
+      )}
+      disabled={disabled}
+      {...props}
+    />
+  );
+}
+```
+
+### Badge Component with CVA
+
+```tsx
+import { cva, type VariantProps } from 'class-variance-authority';
+import { cn } from '@/lib/tailwind/utils';
+
+const badgeVariants = cva(
+  'inline-flex items-center rounded-full border font-medium transition-colors',
+  {
+    variants: {
+      variant: {
+        default: 'bg-primary text-primary-foreground',
+        negative: 'bg-negative-100 text-negative-800 dark:bg-negative-500/25',
+        warning: 'bg-warning-100 text-warning-800 dark:bg-warning-500/25',
+        positive: 'bg-positive-100 text-positive-800 dark:bg-positive-500/25',
+      },
+      size: {
+        default: 'h-6 px-2 text-xs',
+        sm: 'h-5 px-2 text-2xs',
+        lg: 'h-7 px-3 text-sm',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
+    },
+  }
+);
+
+export function Badge({
+  className,
+  variant,
+  size,
+  ...props
+}: React.ComponentProps<'span'> & VariantProps<typeof badgeVariants>) {
+  return (
+    <span
+      className={cn(badgeVariants({ variant, size, className }))}
+      {...props}
+    />
+  );
+}
+```
+
+## Styling Checklist
+
+<Tip>
+When styling components, ensure:
+- Base styles are defined in CVA or utility classes
+- Variants are type-safe with CVA
+- Dark mode styles are included
+- Focus states are visible for accessibility
+- Disabled and invalid states are handled
+- Responsive behavior is considered
+- Custom classes can be passed via `className`
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Theming" icon="palette" href="/components/theming">
+    Customize colors and design tokens
+  </Card>
+  <Card title="Component Overview" icon="puzzle-piece" href="/components/overview">
+    Explore available components
+  </Card>
+</CardGroup>

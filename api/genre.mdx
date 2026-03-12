@@ -1,0 +1,456 @@
+---
+title: Genre API
+description: List and manage book genres
+icon: tags
+---
+
+## Overview
+
+The Genre API provides endpoints for retrieving book genres. Genres are used to categorize books and include a color for visual representation.
+
+<Note>
+  Currently, only the `getAll` endpoint is available. Genre creation, update, and deletion are not yet implemented in the API.
+</Note>
+
+## Permissions
+
+Genre API endpoints require the following permissions:
+
+- `genre:read` - View genres
+
+## Endpoints
+
+### List All Genres
+
+Retrieve a paginated list of genres with optional search.
+
+```typescript
+GET /genres
+```
+
+**Source**: `src/server/routers/genre.ts:10-72`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `genre:read` permission
+</ParamField>
+
+#### Query Parameters
+
+<ParamField query="cursor" type="string" optional>
+  Cursor for pagination (ID of the last genre from the previous page)
+</ParamField>
+
+<ParamField query="limit" type="number" default="20">
+  Number of genres per page (min: 1, max: 100)
+</ParamField>
+
+<ParamField query="searchTerm" type="string" optional>
+  Search term to filter genres by name (case-insensitive)
+</ParamField>
+
+#### Response
+
+<ResponseField name="items" type="Genre[]">
+  Array of genre objects for the current page
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string" optional>
+  Cursor for the next page (undefined if no more pages)
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total count of genres matching the search criteria
+</ResponseField>
+
+#### Genre Object
+
+<Expandable title="Genre Object Fields">
+  <ResponseField name="id" type="string">
+    Unique genre identifier
+  </ResponseField>
+
+  <ResponseField name="name" type="string">
+    Genre name (e.g., "Science Fiction", "Mystery", "Romance")
+  </ResponseField>
+
+  <ResponseField name="color" type="string">
+    Hex color code for the genre (e.g., "#3B82F6")
+    
+    Always 7 characters including the `#` prefix
+  </ResponseField>
+
+  <ResponseField name="createdAt" type="Date">
+    Creation timestamp
+  </ResponseField>
+
+  <ResponseField name="updatedAt" type="Date">
+    Last update timestamp
+  </ResponseField>
+</Expandable>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function GenreSelect() {
+  const { data, isLoading } = orpc.genre.getAll.useQuery({
+    input: {
+      limit: 100, // Get all genres for dropdown
+      searchTerm: '',
+    },
+  });
+
+  if (isLoading) return <div>Loading genres...</div>;
+
+  return (
+    <select>
+      <option value="">Select a genre</option>
+      {data?.items.map((genre) => (
+        <option key={genre.id} value={genre.id}>
+          {genre.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+```
+
+```typescript Genre List with Colors
+import { orpc } from '@/lib/orpc/client';
+
+function GenreList() {
+  const { data, isLoading, fetchNextPage, hasNextPage } = 
+    orpc.genre.getAll.useInfiniteQuery({
+      input: (page) => ({
+        limit: 20,
+        cursor: page?.nextCursor,
+      }),
+      getNextPageParam: (lastPage) => 
+        lastPage.nextCursor ? { nextCursor: lastPage.nextCursor } : undefined,
+    });
+
+  if (isLoading) return <div>Loading...</div>;
+
+  return (
+    <div>
+      {data?.pages.flatMap(page => page.items).map(genre => (
+        <div 
+          key={genre.id}
+          style={{
+            backgroundColor: genre.color,
+            color: 'white',
+            padding: '8px 16px',
+            borderRadius: '4px',
+            margin: '4px',
+          }}
+        >
+          {genre.name}
+        </div>
+      ))}
+      
+      {hasNextPage && (
+        <button onClick={() => fetchNextPage()}>
+          Load More
+        </button>
+      )}
+      
+      <p>Total: {data?.pages[0]?.total} genres</p>
+    </div>
+  );
+}
+```
+
+```typescript REST API
+const params = new URLSearchParams({
+  searchTerm: 'fiction',
+  limit: '20',
+});
+
+const response = await fetch(`/api/rest/genres?${params}`, {
+  headers: {
+    'Authorization': 'Bearer YOUR_TOKEN',
+  },
+});
+
+const data = await response.json();
+// data.items: Genre[]
+// data.nextCursor: string | undefined
+// data.total: number
+
+console.log('Genres:', data.items.map(g => `${g.name} (${g.color})`));
+```
+
+```bash cURL
+curl "https://your-app.com/api/rest/genres?searchTerm=fiction&limit=20" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+</CodeGroup>
+
+---
+
+## Schema Definitions
+
+### Genre Schema
+
+**Source**: `src/features/genre/schema.ts:8-15`
+
+```typescript
+import { z } from 'zod';
+import { zu } from '@/lib/zod/zod-utils';
+
+export const zGenre = () =>
+  z.object({
+    id: z.string(),
+    name: zu.fieldText.required({ error: t('genre:common.name.required') }),
+    color: z.string().length(7), // Hex color with # prefix
+    createdAt: z.date(),
+    updatedAt: z.date(),
+  });
+```
+
+### Color Field Validation
+
+The `color` field must be exactly 7 characters (hex color with `#` prefix):
+
+- Valid: `#FF5733`, `#3B82F6`, `#10B981`
+- Invalid: `FF5733` (missing `#`), `#FFF` (too short), `rgb(255,0,0)` (wrong format)
+
+---
+
+## Search Implementation
+
+The search functionality filters genres by name (case-insensitive):
+
+```typescript
+const where = {
+  name: {
+    contains: input.searchTerm,
+    mode: 'insensitive',
+  },
+} satisfies Prisma.GenreWhereInput;
+```
+
+**Source**: `src/server/routers/genre.ts:39-44`
+
+Search examples:
+- `searchTerm: 'fiction'` - Finds "Science Fiction", "Historical Fiction", etc.
+- `searchTerm: 'sci'` - Finds "Science Fiction", "Science"
+- `searchTerm: undefined` or `searchTerm: ''` - Returns all genres
+
+---
+
+## Usage Patterns
+
+### Genre Dropdown for Book Forms
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+import { Select } from '@/components/ui/select';
+
+function BookForm() {
+  const { data: genresData } = orpc.genre.getAll.useQuery({
+    input: { limit: 100 },
+  });
+
+  const genres = genresData?.items ?? [];
+
+  return (
+    <form>
+      <Select name="genreId" required>
+        <option value="">Select a genre</option>
+        {genres.map((genre) => (
+          <option key={genre.id} value={genre.id}>
+            {genre.name}
+          </option>
+        ))}
+      </Select>
+    </form>
+  );
+}
+```
+
+### Genre Badge Component
+
+```typescript
+import { Genre } from '@/features/genre/schema';
+
+interface GenreBadgeProps {
+  genre: Genre;
+}
+
+function GenreBadge({ genre }: GenreBadgeProps) {
+  return (
+    <span
+      style={{
+        backgroundColor: genre.color,
+        color: 'white',
+        padding: '4px 12px',
+        borderRadius: '12px',
+        fontSize: '0.875rem',
+        fontWeight: 500,
+      }}
+    >
+      {genre.name}
+    </span>
+  );
+}
+
+// Usage in book list
+function BookCard({ book }) {
+  return (
+    <div>
+      <h3>{book.title}</h3>
+      <p>{book.author}</p>
+      {book.genre && <GenreBadge genre={book.genre} />}
+    </div>
+  );
+}
+```
+
+### Searchable Genre Selector
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+import { useState } from 'react';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
+
+function SearchableGenreSelect({ value, onChange }) {
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  const { data, isLoading } = orpc.genre.getAll.useQuery({
+    input: {
+      searchTerm: debouncedSearch,
+      limit: 50,
+    },
+  });
+
+  return (
+    <div>
+      <input
+        type="text"
+        placeholder="Search genres..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+      
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Select a genre</option>
+        {data?.items.map((genre) => (
+          <option key={genre.id} value={genre.id}>
+            {genre.name}
+          </option>
+        ))}
+      </select>
+      
+      {isLoading && <span>Searching...</span>}
+    </div>
+  );
+}
+```
+
+---
+
+## Error Handling
+
+<ResponseField name="UNAUTHORIZED" type="401">
+  Missing or invalid authentication credentials
+</ResponseField>
+
+<ResponseField name="FORBIDDEN" type="403">
+  User lacks the `genre:read` permission
+</ResponseField>
+
+<ResponseField name="BAD_REQUEST" type="400">
+  Invalid query parameters (e.g., limit out of range)
+</ResponseField>
+
+<ResponseField name="INTERNAL_SERVER_ERROR" type="500">
+  Database error or unexpected server error
+</ResponseField>
+
+### Error Example
+
+```json
+{
+  "error": {
+    "code": "FORBIDDEN",
+    "message": "Insufficient permissions",
+    "status": 403
+  }
+}
+```
+
+---
+
+## Pagination
+
+Genres use cursor-based pagination, ordered alphabetically by name:
+
+```typescript
+// First page
+const page1 = await client.genre.getAll({ limit: 20 });
+
+// Next page
+if (page1.nextCursor) {
+  const page2 = await client.genre.getAll({
+    limit: 20,
+    cursor: page1.nextCursor,
+  });
+}
+```
+
+The cursor is the `id` of the last genre in the current page.
+
+---
+
+## Response Example
+
+```json
+{
+  "items": [
+    {
+      "id": "genre-1",
+      "name": "Science Fiction",
+      "color": "#3B82F6",
+      "createdAt": "2024-01-15T10:30:00.000Z",
+      "updatedAt": "2024-01-15T10:30:00.000Z"
+    },
+    {
+      "id": "genre-2",
+      "name": "Mystery",
+      "color": "#8B5CF6",
+      "createdAt": "2024-01-15T10:31:00.000Z",
+      "updatedAt": "2024-01-15T10:31:00.000Z"
+    },
+    {
+      "id": "genre-3",
+      "name": "Romance",
+      "color": "#EC4899",
+      "createdAt": "2024-01-15T10:32:00.000Z",
+      "updatedAt": "2024-01-15T10:32:00.000Z"
+    }
+  ],
+  "nextCursor": "genre-3",
+  "total": 15
+}
+```
+
+---
+
+## Related APIs
+
+<CardGroup cols={2}>
+  <Card title="Book API" icon="book" href="/api/book">
+    Books reference genres via `genreId`
+  </Card>
+  <Card title="Permissions" icon="shield-check" href="/features/authentication">
+    Learn about role-based access control
+  </Card>
+</CardGroup>

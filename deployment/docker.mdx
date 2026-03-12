@@ -1,0 +1,349 @@
+---
+title: Docker Setup
+description: Use Docker to run development services including PostgreSQL, MinIO, and Maildev
+---
+
+Start UI [web] uses Docker Compose to orchestrate development services, providing a consistent environment across different machines.
+
+## Docker Services Overview
+
+The project includes three main services defined in `docker-compose.yml`:
+
+- **PostgreSQL**: Database server for application data
+- **MinIO**: S3-compatible object storage for file uploads
+- **Maildev**: Email testing server that catches all outgoing emails
+
+<Info>
+Docker is required for development unless you have PostgreSQL, S3 storage, and an SMTP server already configured.
+</Info>
+
+## Prerequisites
+
+- [Docker](https://www.docker.com/) installed and running
+- [Docker Compose](https://docs.docker.com/compose/) (included with Docker Desktop)
+
+## Docker Compose Configuration
+
+The complete configuration is in `docker-compose.yml:1-71`:
+
+```yaml docker-compose.yml
+services:
+  postgres:
+    image: postgres:16.1
+    env_file:
+      - .env
+    ports:
+      - '${DOCKER_DATABASE_PORT:-5432}:5432'
+    environment:
+      POSTGRES_DB: $DOCKER_DATABASE_NAME
+      POSTGRES_USER: $DOCKER_DATABASE_USERNAME
+      POSTGRES_PASSWORD: $DOCKER_DATABASE_PASSWORD
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $DOCKER_DATABASE_NAME']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z-cpuv1
+    ports:
+      - '${DOCKER_MINIO_API_PORT}:9000'
+      - '${DOCKER_MINIO_UI_PORT}:9001'
+    environment:
+      - MINIO_ROOT_USER=${DOCKER_MINIO_USERNAME}
+      - MINIO_ROOT_PASSWORD=${DOCKER_MINIO_PASSWORD}
+    volumes:
+      - minio:/data/minio
+    command: minio server /data/minio --console-address :${DOCKER_MINIO_UI_PORT}
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  maildev:
+    image: maildev/maildev:2.2.1
+    ports:
+      - '${DOCKER_MAILDEV_SMTP_PORT:-1025}:1025'
+      - '${DOCKER_MAILDEV_UI_PORT:-1080}:1080'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --spider --no-verbose --tries=1 -T 3 http://localhost:1080/healthz']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  createbucket:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+    profiles:
+      - init
+    depends_on:
+      minio:
+        condition: service_healthy
+    network_mode: service:minio
+    entrypoint: ['']
+    command: [
+        'sh',
+        '-c',
+        '
+        mc alias set default "http://${S3_HOST}" "${DOCKER_MINIO_USERNAME}" "${DOCKER_MINIO_PASSWORD}";
+        mc admin user add default ${S3_ACCESS_KEY_ID} ${S3_SECRET_ACCESS_KEY};
+        mc admin policy attach default readwrite --user ${S3_ACCESS_KEY_ID};
+        mc mb --ignore-existing default/${S3_BUCKET_NAME} 2>/dev/null;
+        mc anonymous set download default/${S3_BUCKET_NAME};
+        echo ''Bucket configuration completed successfully'';
+        ',
+      ]
+    restart: 'no'
+
+volumes:
+  minio:
+```
+
+## Environment Configuration
+
+Configure Docker services via environment variables in your `.env` file (`.env.example:3-15`):
+
+```bash .env
+# DOCKER
+DOCKER_DATABASE_PORT="5432"
+DOCKER_DATABASE_NAME="startui"
+DOCKER_DATABASE_USERNAME="startui"
+DOCKER_DATABASE_PASSWORD="startui"
+
+DOCKER_MINIO_API_PORT="9000"
+DOCKER_MINIO_UI_PORT="9001"
+DOCKER_MINIO_USERNAME="minioadmin"
+DOCKER_MINIO_PASSWORD="minioadmin"
+
+DOCKER_MAILDEV_SMTP_PORT="1025"
+DOCKER_MAILDEV_UI_PORT="1080"
+```
+
+<Warning>
+Change the default passwords in production environments. These defaults are only suitable for local development.
+</Warning>
+
+## Container Management
+
+Start UI [web] provides convenient npm scripts for managing Docker containers (`package.json:35-38`):
+
+<Steps>
+
+<Step title="Initialize Docker services">
+Start all services and create the MinIO bucket:
+
+```bash
+pnpm dk:init
+```
+
+This runs `docker compose --profile init up -d` which:
+- Starts PostgreSQL, MinIO, and Maildev containers
+- Runs the `createbucket` service to configure MinIO
+- Creates the S3 bucket and sets up access credentials
+
+<Info>
+Run this command the first time you set up the project, or when you need to recreate the MinIO bucket.
+</Info>
+</Step>
+
+<Step title="Start containers">
+Start previously created containers:
+
+```bash
+pnpm dk:start
+```
+
+This runs `docker compose start` to start stopped containers without recreating them.
+</Step>
+
+<Step title="Stop containers">
+Stop running containers without removing them:
+
+```bash
+pnpm dk:stop
+```
+
+This runs `docker compose stop`. Data persists in volumes.
+</Step>
+
+<Step title="Clear all data">
+Remove containers and volumes (deletes all data):
+
+```bash
+pnpm dk:clear
+```
+
+This runs `docker compose down --volumes` and removes:
+- All containers
+- All volumes (database data, MinIO files)
+- Networks
+
+<Warning>
+This command permanently deletes all data. You'll need to run `pnpm db:init` again after clearing.
+</Warning>
+</Step>
+
+</Steps>
+
+## Service Details
+
+### PostgreSQL Database
+
+PostgreSQL runs on the configured port (default: `5432`).
+
+**Connection string** (`.env.example:38`):
+```bash
+DATABASE_URL="postgres://${DOCKER_DATABASE_USERNAME}:${DOCKER_DATABASE_PASSWORD}@localhost:${DOCKER_DATABASE_PORT}/${DOCKER_DATABASE_NAME}"
+```
+
+**Healthcheck**: The container includes automatic health monitoring that checks if PostgreSQL is ready to accept connections.
+
+**Data persistence**: Database data is stored in a Docker volume and persists between container restarts.
+
+### MinIO Object Storage
+
+MinIO provides S3-compatible object storage for file uploads.
+
+**Access points**:
+- API: `http://localhost:9000` (or your configured `DOCKER_MINIO_API_PORT`)
+- Console UI: `http://localhost:9001` (or your configured `DOCKER_MINIO_UI_PORT`)
+
+**Environment configuration** (`.env.example:20-27`):
+```bash .env
+S3_BUCKET_NAME="default"
+S3_HOST="127.0.0.1:${DOCKER_MINIO_API_PORT}"
+S3_ACCESS_KEY_ID="startui-access-key"
+S3_SECRET_ACCESS_KEY="startui-secret-key"
+S3_SECURE=false
+S3_FORCE_PATH_STYLE=true
+VITE_S3_BUCKET_PUBLIC_URL="http://${S3_HOST}/${S3_BUCKET_NAME}"
+```
+
+**Bucket initialization**: The `createbucket` service (`docker-compose.yml:46-67`) automatically:
+1. Creates a MinIO alias for the local instance
+2. Adds a user with the configured access keys
+3. Attaches read/write permissions
+4. Creates the bucket if it doesn't exist
+5. Sets the bucket to allow public downloads
+
+<Tip>
+Access the MinIO Console at `http://localhost:9001` to browse uploaded files and manage buckets.
+</Tip>
+
+### Maildev Email Testing
+
+Maildev catches all emails sent by the application during development.
+
+**Access points**:
+- SMTP: `localhost:1025` (for sending emails)
+- Web UI: `http://localhost:1080` (for viewing emails)
+
+**Email configuration** (`.env.example:52-53`):
+```bash .env
+EMAIL_SERVER="smtp://0.0.0.0:${DOCKER_MAILDEV_SMTP_PORT}"
+EMAIL_FROM="Start UI <noreply@example.com>"
+```
+
+<Info>
+All emails sent by the application (login codes, password resets, etc.) appear in the Maildev UI instead of being sent to real email addresses.
+</Info>
+
+## Health Checks
+
+All services include health checks to ensure they're ready before dependent services start:
+
+- **PostgreSQL**: `pg_isready` command
+- **MinIO**: MinIO Client `mc ready` command  
+- **Maildev**: HTTP request to `/healthz` endpoint
+
+The `createbucket` service waits for MinIO to be healthy before running.
+
+## Development Workflow
+
+Typical development workflow with Docker:
+
+<Steps>
+
+<Step title="First time setup">
+```bash
+cp .env.example .env
+pnpm install
+pnpm dk:init
+pnpm db:init
+```
+</Step>
+
+<Step title="Daily development">
+```bash
+pnpm dk:start  # Start Docker containers
+pnpm dev       # Start development server
+```
+</Step>
+
+<Step title="End of day">
+```bash
+pnpm dk:stop   # Stop containers (data persists)
+```
+</Step>
+
+</Steps>
+
+## Troubleshooting
+
+### Port conflicts
+
+If you get port conflict errors, check which ports are in use:
+
+```bash
+# Check if ports are already in use
+lsof -i :5432  # PostgreSQL
+lsof -i :9000  # MinIO API
+lsof -i :9001  # MinIO Console
+lsof -i :1025  # Maildev SMTP
+lsof -i :1080  # Maildev UI
+```
+
+Change the ports in your `.env` file if needed.
+
+### Container won't start
+
+View container logs:
+
+```bash
+docker compose logs postgres
+docker compose logs minio
+docker compose logs maildev
+```
+
+### Reset everything
+
+Completely reset Docker setup:
+
+```bash
+pnpm dk:clear
+pnpm dk:init
+pnpm db:init
+```
+
+## Using Docker in Production
+
+<Warning>
+The provided Docker Compose configuration is designed for **development only**. For production:
+
+- Use managed database services (e.g., AWS RDS, Supabase, PlanetScale)
+- Use managed object storage (e.g., AWS S3, Cloudflare R2)
+- Use a proper email service (e.g., SendGrid, Postmark, AWS SES)
+- Implement proper security measures
+- Use secrets management
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building" icon="hammer" href="/deployment/building">
+    Learn how to build your application for production
+  </Card>
+  <Card title="Production Deployment" icon="rocket" href="/deployment/production">
+    Deploy your application to production environments
+  </Card>
+</CardGroup>

@@ -1,0 +1,470 @@
+---
+title: Config API
+description: Application configuration and environment information
+icon: gear
+---
+
+## Overview
+
+The Config API provides public endpoints for retrieving application configuration and environment settings. These endpoints are useful for displaying environment badges, enabling development tools, and configuring client-side behavior.
+
+<Note>
+  Config endpoints are **public** and do not require authentication.
+</Note>
+
+## Endpoints
+
+### Get Environment Config
+
+Retrieve environment-specific configuration settings.
+
+```typescript
+GET /config/env
+```
+
+**Source**: `src/server/routers/config.ts:9-28`
+
+#### Authentication
+
+<ParamField path="permissions" type="null">
+  Public endpoint - no authentication required
+</ParamField>
+
+#### Response
+
+<ResponseField name="name" type="string" optional>
+  Environment name (e.g., "Development", "Staging", "Production")
+</ResponseField>
+
+<ResponseField name="color" type="string" required>
+  Environment badge color (hex color code)
+</ResponseField>
+
+<ResponseField name="emoji" type="string" optional>
+  Environment emoji for visual identification
+</ResponseField>
+
+<ResponseField name="isDemo" type="boolean" required>
+  Whether demo mode is enabled (restricts write operations)
+</ResponseField>
+
+<ResponseField name="isDev" type="boolean" required>
+  Whether the application is running in development mode
+</ResponseField>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function EnvironmentBadge() {
+  const { data: env } = orpc.config.env.useQuery();
+
+  if (!env?.name) return null;
+
+  return (
+    <div
+      style={{
+        backgroundColor: env.color,
+        color: 'white',
+        padding: '4px 12px',
+        borderRadius: '4px',
+        fontSize: '0.75rem',
+        fontWeight: 600,
+      }}
+    >
+      {env.emoji && <span>{env.emoji} </span>}
+      {env.name}
+      {env.isDemo && ' (Demo)'}
+    </div>
+  );
+}
+```
+
+```typescript Feature Flags
+import { orpc } from '@/lib/orpc/client';
+
+function useFeatureFlags() {
+  const { data: env } = orpc.config.env.useQuery();
+
+  return {
+    isDev: env?.isDev ?? false,
+    isDemo: env?.isDemo ?? false,
+    // Disable certain features in demo mode
+    canDelete: !env?.isDemo,
+    canEdit: !env?.isDemo,
+    // Enable debug tools in development
+    showDebugTools: env?.isDev,
+  };
+}
+
+// Usage
+function DeleteButton({ itemId }) {
+  const { canDelete } = useFeatureFlags();
+
+  if (!canDelete) {
+    return (
+      <button disabled title="Not available in demo mode">
+        Delete
+      </button>
+    );
+  }
+
+  return <button onClick={() => deleteItem(itemId)}>Delete</button>;
+}
+```
+
+```typescript REST API
+const response = await fetch('/api/rest/config/env');
+const env = await response.json();
+
+console.log('Environment:', env.name);
+console.log('Demo mode:', env.isDemo);
+console.log('Development:', env.isDev);
+
+if (env.isDemo) {
+  console.warn('Running in demo mode - write operations are disabled');
+}
+```
+
+```bash cURL
+curl https://your-app.com/api/rest/config/env
+```
+
+</CodeGroup>
+
+#### Environment Variables
+
+The endpoint reads from the following environment variables (configured in `.env`):
+
+```bash
+VITE_ENV_NAME="Development"      # Environment display name
+VITE_ENV_COLOR="#3B82F6"         # Badge color (hex)
+VITE_ENV_EMOJI="🚀"              # Optional emoji
+VITE_IS_DEMO="false"             # Enable demo mode
+```
+
+**Source**: `src/env/client.ts` and `src/server/routers/config.ts:22-26`
+
+---
+
+### Get Devtools Config
+
+Retrieve development tools configuration.
+
+```typescript
+GET /config/devtools
+```
+
+**Source**: `src/server/routers/config.ts:29-45`
+
+#### Authentication
+
+<ParamField path="permissions" type="null">
+  Public endpoint - no authentication required
+</ParamField>
+
+#### Response
+
+<ResponseField name="maildevIframeSrc" type="string | null">
+  URL for embedding MailDev UI in development mode. Returns `null` in production or if MailDev is not configured.
+</ResponseField>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function MailDevViewer() {
+  const { data: devtools } = orpc.config.devtools.useQuery();
+
+  if (!devtools?.maildevIframeSrc) {
+    return <p>MailDev is not available</p>;
+  }
+
+  return (
+    <div>
+      <h2>Email Preview (Development)</h2>
+      <iframe
+        src={devtools.maildevIframeSrc}
+        style={{
+          width: '100%',
+          height: '600px',
+          border: '1px solid #ccc',
+        }}
+        title="MailDev"
+      />
+    </div>
+  );
+}
+```
+
+```typescript Conditional DevTools
+import { orpc } from '@/lib/orpc/client';
+
+function DeveloperTools() {
+  const { data: env } = orpc.config.env.useQuery();
+  const { data: devtools } = orpc.config.devtools.useQuery();
+
+  // Only show in development
+  if (!env?.isDev) return null;
+
+  return (
+    <div>
+      <h2>Developer Tools</h2>
+      
+      {devtools?.maildevIframeSrc && (
+        <section>
+          <h3>Email Testing</h3>
+          <a 
+            href={devtools.maildevIframeSrc} 
+            target="_blank" 
+            rel="noopener noreferrer"
+          >
+            Open MailDev
+          </a>
+        </section>
+      )}
+      
+      {/* Other dev tools */}
+    </div>
+  );
+}
+```
+
+```typescript REST API
+const response = await fetch('/api/rest/config/devtools');
+const devtools = await response.json();
+
+if (devtools.maildevIframeSrc) {
+  console.log('MailDev available at:', devtools.maildevIframeSrc);
+  // Open in new window or embed in iframe
+} else {
+  console.log('MailDev not configured');
+}
+```
+
+```bash cURL
+curl https://your-app.com/api/rest/config/devtools
+```
+
+</CodeGroup>
+
+#### MailDev Configuration
+
+The MailDev URL is only available in development mode when the Docker container is running:
+
+```bash
+# .env.local
+DOCKER_MAILDEV_UI_PORT=1080
+```
+
+The endpoint checks:
+1. `import.meta.env.DEV` - Must be development mode
+2. `process.env.DOCKER_MAILDEV_UI_PORT` - Must be set
+
+If both conditions are met, returns: `http://localhost:1080/#/`
+
+**Source**: `src/server/routers/config.ts:38-42`
+
+---
+
+## Response Examples
+
+### Environment Config Response
+
+```json
+// Development Environment
+{
+  "name": "Development",
+  "color": "#3B82F6",
+  "emoji": "🚀",
+  "isDemo": false,
+  "isDev": true
+}
+```
+
+```json
+// Production Environment
+{
+  "name": "Production",
+  "color": "#10B981",
+  "emoji": "✨",
+  "isDemo": false,
+  "isDev": false
+}
+```
+
+```json
+// Demo Environment
+{
+  "name": "Demo",
+  "color": "#F59E0B",
+  "emoji": "🎭",
+  "isDemo": true,
+  "isDev": false
+}
+```
+
+### Devtools Config Response
+
+```json
+// Development with MailDev
+{
+  "maildevIframeSrc": "http://localhost:1080/#/"
+}
+```
+
+```json
+// Production or MailDev not configured
+{
+  "maildevIframeSrc": null
+}
+```
+
+---
+
+## Use Cases
+
+### Environment Badge in Layout
+
+Display the current environment in the application header:
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+export function AppLayout({ children }) {
+  const { data: env } = orpc.config.env.useQuery();
+
+  return (
+    <div>
+      <header>
+        <h1>My Application</h1>
+        {env?.name && (
+          <span
+            style={{
+              backgroundColor: env.color,
+              padding: '2px 8px',
+              borderRadius: '4px',
+              fontSize: '0.75rem',
+            }}
+          >
+            {env.emoji} {env.name}
+          </span>
+        )}
+      </header>
+      <main>{children}</main>
+    </div>
+  );
+}
+```
+
+### Demo Mode Warning
+
+Show a banner when running in demo mode:
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+export function DemoModeBanner() {
+  const { data: env } = orpc.config.env.useQuery();
+
+  if (!env?.isDemo) return null;
+
+  return (
+    <div
+      style={{
+        backgroundColor: '#FEF3C7',
+        borderLeft: '4px solid #F59E0B',
+        padding: '12px 16px',
+        margin: '16px 0',
+      }}
+    >
+      <strong>Demo Mode Active</strong>
+      <p>Write operations (create, update, delete) are disabled.</p>
+    </div>
+  );
+}
+```
+
+### Development Tools Panel
+
+Show development tools only in dev mode:
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+export function DevToolsPanel() {
+  const { data: env } = orpc.config.env.useQuery();
+  const { data: devtools } = orpc.config.devtools.useQuery();
+
+  if (!env?.isDev) return null;
+
+  return (
+    <aside style={{ position: 'fixed', bottom: 0, right: 0 }}>
+      <h3>Dev Tools</h3>
+      <ul>
+        <li>
+          <a href="/api/openapi/app" target="_blank">
+            API Documentation
+          </a>
+        </li>
+        {devtools?.maildevIframeSrc && (
+          <li>
+            <a href={devtools.maildevIframeSrc} target="_blank">
+              Email Inbox (MailDev)
+            </a>
+          </li>
+        )}
+      </ul>
+    </aside>
+  );
+}
+```
+
+---
+
+## Client Environment Variables
+
+The config API exposes specific client-safe environment variables. These are defined in `src/env/client.ts`:
+
+```typescript
+import { z } from 'zod';
+
+const envClientSchema = z.object({
+  VITE_BASE_URL: z.string().url(),
+  VITE_ENV_NAME: z.string().optional(),
+  VITE_ENV_COLOR: z.string(),
+  VITE_ENV_EMOJI: z.string().optional(),
+  VITE_IS_DEMO: z.coerce.boolean(),
+});
+
+export const envClient = envClientSchema.parse(import.meta.env);
+```
+
+<Note>
+  Only variables prefixed with `VITE_` are exposed to the client. Never expose sensitive secrets.
+</Note>
+
+---
+
+## Related Guides
+
+<CardGroup cols={2}>
+  <Card title="Environment Setup" icon="gear" href="/core-concepts/environment-variables">
+    Configure environment variables
+  </Card>
+  <Card title="Demo Mode" icon="presentation-screen" href="/api/config">
+    Learn about demo mode restrictions
+  </Card>
+  <Card title="Development Tools" icon="wrench" href="/development/dev-tools">
+    Using MailDev and other dev tools
+  </Card>
+  <Card title="API Overview" icon="book-open-cover" href="/api/overview">
+    Back to API documentation
+  </Card>
+</CardGroup>

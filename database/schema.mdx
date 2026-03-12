@@ -1,0 +1,352 @@
+---
+title: Database Schema
+description: Complete database schema overview with models, relationships, and field definitions
+---
+
+The database schema is defined using Prisma and PostgreSQL, covering authentication, user management, and application-specific data models.
+
+## Schema Overview
+
+The schema includes several key areas:
+
+- **Authentication Models**: User, Session, Account, and Verification
+- **Application Models**: Book, Author, Genre, and Publisher
+- **User Management**: Roles, banning, and onboarding
+
+## Configuration
+
+The Prisma schema is configured to use PostgreSQL with a custom client output directory:
+
+```prisma
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/server/db/generated"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+```
+
+<Info>
+The generated Prisma client is output to `src/server/db/generated` to keep the generated code organized within the server directory structure.
+</Info>
+
+## Authentication Models
+
+The authentication models are designed to work with Better Auth and support multiple authentication providers.
+
+### User Model
+
+The core user model with support for roles, banning, and onboarding:
+
+```prisma
+enum UserRole {
+  user
+  admin
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+
+  role        UserRole?
+  banned      Boolean?
+  banReason   String?
+  banExpires  DateTime?
+  onboardedAt DateTime?
+
+  @@unique([email])
+  @@map("user")
+}
+```
+
+<Accordion title="User Model Fields">
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String` | Unique identifier using CUID |
+| `name` | `String` | User's display name |
+| `email` | `String` | User's email (unique) |
+| `emailVerified` | `Boolean` | Email verification status |
+| `image` | `String?` | Optional profile image URL |
+| `role` | `UserRole?` | User role (user or admin) |
+| `banned` | `Boolean?` | Whether the user is banned |
+| `banReason` | `String?` | Reason for ban |
+| `banExpires` | `DateTime?` | When the ban expires |
+| `onboardedAt` | `DateTime?` | When user completed onboarding |
+| `createdAt` | `DateTime` | Account creation timestamp |
+| `updatedAt` | `DateTime` | Last update timestamp |
+
+</Accordion>
+
+### Session Model
+
+Manages user sessions with support for impersonation:
+
+```prisma
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  impersonatedBy String?
+
+  @@unique([token])
+  @@map("session")
+}
+```
+
+<Info>
+The `impersonatedBy` field allows administrators to impersonate users for support purposes while maintaining an audit trail.
+</Info>
+
+### Account Model
+
+Supports multiple OAuth providers and password-based authentication:
+
+```prisma
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+```
+
+### Verification Model
+
+Handles email verification and password reset tokens:
+
+```prisma
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+
+  @@map("verification")
+}
+```
+
+## Application Models
+
+The application includes a book management system with authors, genres, and publishers.
+
+### Book Model
+
+The main book entity with relationships to genres:
+
+```prisma
+model Book {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  title     String
+  author    String
+  genre     Genre?   @relation(fields: [genreId], references: [id])
+  genreId   String
+  publisher String?
+  coverId   String?
+
+  @@unique([title, author])
+  @@map("book")
+}
+```
+
+<Warning>
+The `@@unique([title, author])` constraint prevents duplicate books with the same title and author combination.
+</Warning>
+
+### Genre Model
+
+Book genres with color-coding support:
+
+```prisma
+model Genre {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  name      String   @unique
+  color     String
+  Book      Book[]
+
+  @@map("genre")
+}
+```
+
+The default genres include:
+
+<CardGroup cols={2}>
+  <Card title="Adventure" icon="compass">
+    Action-packed stories and exploration
+  </Card>
+  <Card title="Business" icon="briefcase">
+    Business and professional development
+  </Card>
+  <Card title="Classic" icon="book-open">
+    Timeless literary works
+  </Card>
+  <Card title="Drama" icon="masks-theater">
+    Dramatic narratives and stories
+  </Card>
+  <Card title="Fantasy" icon="wand-magic-sparkles">
+    Magical worlds and creatures
+  </Card>
+  <Card title="Mythology" icon="dragon">
+    Myths and legendary tales
+  </Card>
+  <Card title="Poetry" icon="feather">
+    Poetic works and verse
+  </Card>
+  <Card title="Romance" icon="heart">
+    Love stories and relationships
+  </Card>
+  <Card title="Science Fiction" icon="rocket">
+    Futuristic and sci-fi themes
+  </Card>
+  <Card title="Thriller" icon="explosion">
+    Suspenseful and thrilling narratives
+  </Card>
+</CardGroup>
+
+### Author Model
+
+Stores book authors:
+
+```prisma
+model Author {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  name      String   @unique
+
+  @@map("author")
+}
+```
+
+### Publisher Model
+
+Stores book publishers:
+
+```prisma
+model Publisher {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  name      String   @unique
+
+  @@map("publisher")
+}
+```
+
+## Model Relationships
+
+The schema defines several important relationships:
+
+<Steps>
+  <Step title="User ↔ Sessions">
+    One-to-many relationship. A user can have multiple active sessions across different devices.
+    
+    ```typescript
+    // User has many sessions
+    sessions: Session[]
+    
+    // Session belongs to one user
+    user: User @relation(fields: [userId], references: [id], onDelete: Cascade)
+    ```
+  </Step>
+  
+  <Step title="User ↔ Accounts">
+    One-to-many relationship. A user can have multiple accounts (OAuth providers, password auth).
+    
+    ```typescript
+    // User has many accounts
+    accounts: Account[]
+    
+    // Account belongs to one user
+    user: User @relation(fields: [userId], references: [id], onDelete: Cascade)
+    ```
+  </Step>
+  
+  <Step title="Genre ↔ Books">
+    One-to-many relationship. A genre can have multiple books.
+    
+    ```typescript
+    // Genre has many books
+    Book: Book[]
+    
+    // Book belongs to one genre
+    genre: Genre? @relation(fields: [genreId], references: [id])
+    ```
+  </Step>
+</Steps>
+
+## Cascade Deletion
+
+The schema uses cascade deletion for data integrity:
+
+- **Deleting a User**: Automatically deletes all associated Sessions and Accounts
+- **Deleting a Genre**: Books will have their `genre` field set to `null` (optional relation)
+
+<Note>
+Cascade deletion ensures that orphaned records are automatically cleaned up when a parent record is deleted.
+</Note>
+
+## Field Constraints
+
+### Unique Constraints
+
+| Model | Fields | Purpose |
+|-------|--------|----------|
+| User | `email` | Prevent duplicate email addresses |
+| Session | `token` | Ensure session tokens are unique |
+| Book | `title, author` | Prevent duplicate books |
+| Author | `name` | Prevent duplicate authors |
+| Genre | `name` | Prevent duplicate genres |
+| Publisher | `name` | Prevent duplicate publishers |
+
+### Default Values
+
+- **IDs**: All models use `cuid()` for generating unique identifiers
+- **Timestamps**: `createdAt` defaults to `now()`, `updatedAt` auto-updates
+- **Booleans**: `emailVerified`, `banned` have no default (nullable)
+
+## Database Connection
+
+The database connection is configured via environment variable:
+
+```bash
+DATABASE_URL="postgres://user:password@localhost:5432/dbname"
+```
+
+See the [Prisma documentation](/database/prisma) for more details on configuration and operations.

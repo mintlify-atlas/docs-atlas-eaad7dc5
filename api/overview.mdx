@@ -1,0 +1,316 @@
+---
+title: API Overview
+description: Learn how to use the type-safe oRPC API with OpenAPI documentation support
+icon: book-open-cover
+---
+
+## Introduction
+
+Start UI [web] provides a fully type-safe API built with [oRPC](https://orpc.unnoq.com/), offering both RPC-style and REST-style endpoints. The API is organized into focused routers for accounts, books, genres, users, and configuration.
+
+## API Architecture
+
+The API is structured using oRPC, which provides:
+
+- **Type Safety**: Full end-to-end type safety from server to client
+- **OpenAPI Support**: Automatic OpenAPI schema generation
+- **Dual Protocol**: Access via RPC client or REST endpoints
+- **Authentication**: Built-in authentication and permission system
+- **Error Handling**: Standardized error responses
+
+### Router Structure
+
+The main router is defined in `src/server/router.ts`:
+
+```typescript
+import { InferRouterInputs, InferRouterOutputs } from '@orpc/server';
+
+import accountRouter from './routers/account';
+import bookRouter from './routers/book';
+import configRouter from './routers/config';
+import genreRouter from './routers/genre';
+import userRouter from './routers/user';
+
+export type Router = typeof router;
+export type Inputs = InferRouterInputs<typeof router>;
+export type Outputs = InferRouterOutputs<typeof router>;
+
+export const router = {
+  account: accountRouter,
+  book: bookRouter,
+  genre: genreRouter,
+  user: userRouter,
+  config: configRouter,
+};
+```
+
+## OpenAPI Documentation
+
+Interactive OpenAPI documentation is available at:
+
+```
+GET /api/openapi/app
+```
+
+The OpenAPI schema endpoint:
+
+```
+GET /api/openapi/app/schema
+```
+
+### OpenAPI Configuration
+
+The OpenAPI spec is generated with the following configuration (from `src/routes/api/openapi/app.schema.ts`):
+
+- **Base URL**: `/api/rest`
+- **Security Schemes**:
+  - API Key (Cookie): `apiKeyCookie`
+  - Bearer Token: `bearerAuth`
+- **UI**: Powered by [Scalar](https://scalar.com/)
+
+## Type-Safe Client Usage
+
+The application uses a type-safe oRPC client with React Query integration. Here's how to use it:
+
+### Client Setup
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+```
+
+### Making API Calls
+
+<CodeGroup>
+
+```typescript Query Example
+import { orpc } from '@/lib/orpc/client';
+
+// Fetch all books with search
+const { data, isLoading } = orpc.book.getAll.useQuery({
+  input: {
+    searchTerm: 'typescript',
+    limit: 20,
+    cursor: undefined,
+  },
+});
+
+// Access typed response
+const books = data?.items; // Book[]
+const total = data?.total; // number
+const nextCursor = data?.nextCursor; // string | undefined
+```
+
+```typescript Mutation Example
+import { orpc } from '@/lib/orpc/client';
+
+// Create a new book
+const { mutate, isPending } = orpc.book.create.useMutation();
+
+mutate({
+  input: {
+    title: 'Learning TypeScript',
+    author: 'Josh Goldberg',
+    genreId: 'genre-123',
+    publisher: "O'Reilly Media",
+    coverId: null,
+  },
+});
+```
+
+```typescript Server-Side Example
+import { createORPCClient } from '@orpc/client';
+import { RPCLink } from '@orpc/client/fetch';
+import type { RouterClient } from '@orpc/server';
+import type { Router } from '@/server/router';
+
+const link = new RPCLink({
+  url: 'https://your-app.com/api/rpc',
+});
+
+const client: RouterClient<Router> = createORPCClient(link);
+
+// Call endpoints
+const books = await client.book.getAll({
+  searchTerm: 'typescript',
+  limit: 10,
+});
+```
+
+</CodeGroup>
+
+## Authentication
+
+The API uses two types of procedures:
+
+### Public Procedures
+
+No authentication required. Used for endpoints like configuration:
+
+```typescript
+import { publicProcedure } from '@/server/orpc';
+
+const endpoint = publicProcedure()
+  .route({ method: 'GET', path: '/config/env' })
+  .handler(() => { /* ... */ });
+```
+
+### Protected Procedures
+
+Require authentication and optionally specific permissions:
+
+```typescript
+import { protectedProcedure } from '@/server/orpc';
+
+const endpoint = protectedProcedure({
+  permissions: {
+    book: ['read'],
+  },
+})
+  .route({ method: 'GET', path: '/books' })
+  .handler(({ context }) => {
+    const user = context.user; // Authenticated user
+    const session = context.session; // Current session
+    // ...
+  });
+```
+
+## Authentication Methods
+
+The API supports two authentication methods:
+
+1. **Cookie Authentication**: Automatic for browser requests
+2. **Bearer Token**: For API clients and programmatic access
+
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  https://your-app.com/api/rest/books
+```
+
+## Error Handling
+
+The API uses standardized error codes from oRPC:
+
+<ResponseField name="UNAUTHORIZED" type="401">
+  Missing or invalid authentication credentials
+</ResponseField>
+
+<ResponseField name="FORBIDDEN" type="403">
+  Insufficient permissions for the requested operation
+</ResponseField>
+
+<ResponseField name="NOT_FOUND" type="404">
+  The requested resource does not exist
+</ResponseField>
+
+<ResponseField name="CONFLICT" type="409">
+  Unique constraint violation (e.g., duplicate email)
+</ResponseField>
+
+<ResponseField name="BAD_REQUEST" type="400">
+  Invalid input parameters or validation errors
+</ResponseField>
+
+<ResponseField name="INTERNAL_SERVER_ERROR" type="500">
+  Unexpected server error
+</ResponseField>
+
+<ResponseField name="METHOD_NOT_SUPPORTED" type="405">
+  Method not allowed (e.g., writes in demo mode)
+</ResponseField>
+
+### Error Response Format
+
+```json
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Unable to find book with the provided input",
+    "status": 404
+  }
+}
+```
+
+## Demo Mode
+
+When `VITE_IS_DEMO` is enabled, write operations (POST, DELETE, etc.) are blocked:
+
+```typescript
+if (envClient.VITE_IS_DEMO && method !== 'GET') {
+  throw new ORPCError('METHOD_NOT_SUPPORTED', {
+    message: 'DEMO_MODE_ENABLED',
+  });
+}
+```
+
+<Note>
+In demo mode, all GET requests work normally, but mutations return a `METHOD_NOT_SUPPORTED` error.
+</Note>
+
+## Performance Monitoring
+
+The API includes Server-Timing headers for performance monitoring:
+
+```
+Server-Timing: auth;dur=12.45, global;dur=156.78, db-book-findMany;dur=23.45
+```
+
+These headers provide timing information for:
+- `auth`: Authentication check duration
+- `global`: Total request duration
+- `db-*`: Individual database operations
+
+## Pagination
+
+Most list endpoints support cursor-based pagination:
+
+<ParamField path="cursor" type="string" optional>
+  Cursor for pagination (ID of the last item from previous page)
+</ParamField>
+
+<ParamField path="limit" type="number" default="20">
+  Number of items per page (min: 1, max: 100)
+</ParamField>
+
+<ResponseField name="items" type="array">
+  Array of items for the current page
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string" optional>
+  Cursor to fetch the next page (undefined if no more pages)
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total count of all items matching the query
+</ResponseField>
+
+### Pagination Example
+
+```typescript
+// First page
+const page1 = await client.book.getAll({ limit: 20 });
+
+// Next page
+if (page1.nextCursor) {
+  const page2 = await client.book.getAll({
+    limit: 20,
+    cursor: page1.nextCursor,
+  });
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Account API" icon="user" href="/api/account">
+    Manage user profiles and onboarding
+  </Card>
+  <Card title="Book API" icon="book" href="/api/book">
+    CRUD operations for books
+  </Card>
+  <Card title="Genre API" icon="tags" href="/api/genre">
+    List and manage book genres
+  </Card>
+  <Card title="User API" icon="users" href="/api/user">
+    User management and sessions (admin only)
+  </Card>
+</CardGroup>

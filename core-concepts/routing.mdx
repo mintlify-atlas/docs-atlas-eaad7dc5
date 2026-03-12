@@ -1,0 +1,283 @@
+---
+title: "Routing"
+description: "File-based routing with TanStack Start for type-safe navigation"
+---
+
+## Overview
+
+Start UI [web] uses [TanStack Start](https://tanstack.com/start)'s file-based routing system, which provides type-safe routing with automatic route tree generation.
+
+## File-Based Routing
+
+Routes are defined as files in the `src/routes/` directory. The file structure determines the URL structure:
+
+```
+src/routes/
+├── __root.tsx           # Root layout for all routes
+├── index.tsx            # / (home page)
+├── login/
+│   └── index.tsx        # /login
+├── app/
+│   ├── __layout.tsx     # Layout for /app/* routes
+│   ├── index.tsx        # /app
+│   └── dashboard.tsx    # /app/dashboard
+└── manager/
+    ├── __layout.tsx     # Layout for /manager/* routes
+    ├── index.tsx        # /manager
+    ├── users/
+    │   └── index.tsx    # /manager/users
+    └── books/
+        ├── index.tsx    # /manager/books
+        └── $id.tsx      # /manager/books/:id
+```
+
+### Special Files
+
+- **`__root.tsx`** - Root layout that wraps all routes
+- **`__layout.tsx`** - Layout component for nested routes
+- **`index.tsx`** - Default route for a directory
+- **`$param.tsx`** - Dynamic route parameter
+
+## Router Configuration
+
+The router is configured in `src/router.tsx`:
+
+```typescript src/router.tsx
+import { createRouter } from '@tanstack/react-router';
+import { queryClient } from '@/lib/tanstack-query/query-client';
+import { routeTree } from './routeTree.gen';
+
+export function getRouter() {
+  return createRouter({
+    context: {
+      queryClient,
+    },
+    defaultPreload: 'intent',
+    // Since we're using React Query, we don't want loader calls to ever be stale
+    defaultPreloadStaleTime: 0,
+    scrollRestoration: true,
+    routeTree,
+  });
+}
+```
+
+<Note>
+The `routeTree.gen.ts` file is automatically generated when you run `pnpm dev`. Never edit this file manually.
+</Note>
+
+## Root Route
+
+The root route (`src/routes/__root.tsx`) defines the HTML document structure and global providers:
+
+```typescript src/routes/__root.tsx
+import { createRootRouteWithContext } from '@tanstack/react-router';
+import { QueryClient } from '@tanstack/react-query';
+
+export const Route = createRootRouteWithContext<{
+  queryClient: QueryClient;
+}>()({
+  loader: async () => {
+    // Setup language and theme in SSR
+    if (import.meta.env.SSR) {
+      const { language } = await initSsrApp();
+      i18n.changeLanguage(language);
+    }
+  },
+  notFoundComponent: () => <PageError type="404" />,
+  errorComponent: () => <PageError type="error-boundary" />,
+  component: RootComponent,
+});
+```
+
+## Creating Routes
+
+### Basic Route
+
+Create a file in `src/routes/` with a route component:
+
+```typescript src/routes/about.tsx
+import { createFileRoute } from '@tanstack/react-router';
+
+export const Route = createFileRoute('/about')({
+  component: AboutPage,
+});
+
+function AboutPage() {
+  return (
+    <div>
+      <h1>About</h1>
+      <p>This is the about page.</p>
+    </div>
+  );
+}
+```
+
+### Route with Loader
+
+Fetch data on the server before rendering:
+
+```typescript src/routes/manager/books/$id.tsx
+import { createFileRoute } from '@tanstack/react-router';
+import { orpcClient } from '@/lib/orpc/client';
+
+export const Route = createFileRoute('/manager/books/$id')({
+  loader: async ({ params, context }) => {
+    const book = await context.queryClient.ensureQueryData({
+      queryKey: ['book', params.id],
+      queryFn: () => orpcClient.book.get({ id: params.id }),
+    });
+    return { book };
+  },
+  component: BookDetailPage,
+});
+
+function BookDetailPage() {
+  const { book } = Route.useLoaderData();
+  return <div>{book.title}</div>;
+}
+```
+
+### Route Parameters
+
+Access dynamic route parameters:
+
+```typescript
+function BookDetailPage() {
+  const { id } = Route.useParams();
+  const navigate = Route.useNavigate();
+  
+  return <div>Book ID: {id}</div>;
+}
+```
+
+### Search Params
+
+Define and validate search parameters with Zod:
+
+```typescript
+import { z } from 'zod';
+
+export const Route = createFileRoute('/manager/users')({
+  validateSearch: z.object({
+    page: z.number().int().positive().default(1),
+    search: z.string().optional(),
+  }),
+  component: UsersPage,
+});
+
+function UsersPage() {
+  const { page, search } = Route.useSearch();
+  // page and search are fully typed!
+}
+```
+
+## Navigation
+
+### Link Component
+
+Use the type-safe `Link` component for navigation:
+
+```typescript
+import { Link } from '@tanstack/react-router';
+
+function Navigation() {
+  return (
+    <nav>
+      <Link to="/">Home</Link>
+      <Link to="/app/dashboard">Dashboard</Link>
+      <Link 
+        to="/manager/books/$id" 
+        params={{ id: '123' }}
+      >
+        Book Details
+      </Link>
+      <Link
+        to="/manager/users"
+        search={{ page: 2, search: 'john' }}
+      >
+        Users (Page 2)
+      </Link>
+    </nav>
+  );
+}
+```
+
+### Programmatic Navigation
+
+```typescript
+function MyComponent() {
+  const navigate = Route.useNavigate();
+  
+  const handleClick = () => {
+    navigate({ to: '/app/dashboard' });
+  };
+  
+  return <button onClick={handleClick}>Go to Dashboard</button>;
+}
+```
+
+## Layouts
+
+Layouts are shared UI components that wrap nested routes:
+
+```typescript src/routes/app/__layout.tsx
+import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { AppLayout } from '@/layout/app';
+
+export const Route = createFileRoute('/app/__layout')({
+  component: AppLayoutRoute,
+});
+
+function AppLayoutRoute() {
+  return (
+    <AppLayout>
+      <Outlet /> {/* Nested routes render here */}
+    </AppLayout>
+  );
+}
+```
+
+## Protected Routes
+
+Create guards for authentication and authorization:
+
+```typescript src/routes/app/__layout.tsx
+import { GuardAuthenticated } from '@/features/auth';
+
+export const Route = createFileRoute('/app/__layout')({
+  beforeLoad: async () => {
+    // This runs before the route loads
+    // Redirect if not authenticated
+  },
+  component: () => (
+    <GuardAuthenticated>
+      <AppLayout>
+        <Outlet />
+      </AppLayout>
+    </GuardAuthenticated>
+  ),
+});
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Co-locate Components" icon="folder">
+    Keep route components close to their route definition for better organization
+  </Card>
+  <Card title="Use Loaders" icon="download">
+    Fetch data in loaders for SSR support and automatic loading states
+  </Card>
+  <Card title="Type Safety" icon="shield">
+    Leverage TypeScript for type-safe routing, params, and search validation
+  </Card>
+  <Card title="Preloading" icon="bolt">
+    Use `defaultPreload: 'intent'` to preload routes on hover
+  </Card>
+</CardGroup>
+
+## Learn More
+
+<Card title="TanStack Router Docs" icon="book" href="https://tanstack.com/router">
+  Official TanStack Router documentation
+</Card>

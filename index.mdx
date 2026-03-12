@@ -1,97 +1,173 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Start UI [web]"
+description: "Opinionated full-stack React starter with TanStack Start, TypeScript, Tailwind CSS, Prisma, and Better Auth"
 ---
 
-## Setting up
+<div style={{
+  background: "linear-gradient(135deg, #121214 0%, #1F1F23 100%)",
+  borderRadius: "4px",
+  padding: "3rem 2rem",
+  marginBottom: "2rem",
+  color: "#FFFFFF"
+}}>
+  <h1 style={{
+    fontSize: "2.5rem",
+    fontWeight: "700",
+    marginBottom: "1rem",
+    color: "#FFFFFF"
+  }}>
+    Start UI [web]
+  </h1>
+  <p style={{
+    fontSize: "1.25rem",
+    color: "#c7c7c7",
+    marginBottom: "2rem"
+  }}>
+    Opinionated full-stack React starter from the BearStudio Team
+  </p>
+  <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+    <a 
+      href="/quickstart"
+      style={{
+        background: "#007bff",
+        color: "#ffffff",
+        padding: "0.75rem 1.5rem",
+        borderRadius: "4px",
+        textDecoration: "none",
+        fontWeight: "600"
+      }}
+    >
+      Get Started
+    </a>
+    <a 
+      href="https://github.com/bearstudio/start-ui-web"
+      style={{
+        background: "#ffffff",
+        color: "#007bff",
+        padding: "0.75rem 1.5rem",
+        borderRadius: "4px",
+        textDecoration: "none",
+        fontWeight: "600"
+      }}
+    >
+      View on GitHub
+    </a>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+## What is Start UI [web]?
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
+Start UI [web] is an opinionated frontend starter repository created and maintained by the [BearStudio Team](https://www.bearstudio.fr/team). It represents our team's up-to-date stack that we use when creating web apps for our clients.
+
+Built with modern technologies like TanStack Start, TypeScript, Prisma, and Better Auth, this starter provides everything you need to build production-ready full-stack applications.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="TanStack Start" icon="rocket">
+    Modern React framework with SSR, file-based routing, and optimized performance
+  </Card>
+  <Card title="TypeScript" icon="code">
+    Full type safety across your entire application with strict type checking
+  </Card>
+  <Card title="Better Auth" icon="shield">
+    Complete authentication system with sessions, providers, and security features
+  </Card>
+  <Card title="Prisma ORM" icon="database">
+    Type-safe database access with PostgreSQL support and migrations
+  </Card>
+  <Card title="oRPC" icon="plug">
+    End-to-end type-safe API with automatic client generation
+  </Card>
+  <Card title="shadcn/ui" icon="palette">
+    Beautiful, accessible component library built on Radix UI and Tailwind CSS
+  </Card>
+  <Card title="React Hook Form" icon="file-check">
+    Performant form handling with validation via Zod schemas
+  </Card>
+  <Card title="File Uploads" icon="upload">
+    Integrated file upload system with Better Upload and S3 compatibility
+  </Card>
+  <Card title="Email Templates" icon="envelope">
+    React-based email templates with react-email and Nodemailer
+  </Card>
+  <Card title="Internationalization" icon="globe">
+    Multi-language support with i18next and automatic language detection
+  </Card>
+  <Card title="Storybook" icon="book">
+    Component development environment with stories and documentation
+  </Card>
+  <Card title="Testing" icon="vial">
+    Complete testing setup with Vitest for unit tests and Playwright for E2E
+  </Card>
+</CardGroup>
+
+## Quick Start
+
+Get started with Start UI [web] in minutes:
+
+<CodeGroup>
+```bash npm
+pnpm create start-ui -t web myApp
+```
+
+```bash Manual Setup
+git clone https://github.com/bearstudio/start-ui-web.git myApp
+cd myApp
+pnpm install
+cp .env.example .env
+pnpm dk:init
+pnpm db:init
+pnpm dev
+```
+</CodeGroup>
+
+<Card title="Quickstart Guide" icon="bolt" href="/quickstart">
+  Follow our step-by-step guide to get your first app running
 </Card>
 
-## Make it yours
+## Technology Stack
 
-Design a docs site that looks great and empowers your users.
+Start UI [web] is built on a carefully selected stack of modern technologies:
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+- **[Node.js](https://nodejs.org)** ≥ 22 - JavaScript runtime
+- **[TypeScript](https://www.typescriptlang.org/)** - Type-safe JavaScript
+- **[React](https://react.dev/)** 19 - UI framework
+- **[TanStack Start](https://tanstack.com/start)** - React meta-framework
+- **[Tailwind CSS](https://tailwindcss.com/)** - Utility-first CSS
+- **[shadcn/ui](https://ui.shadcn.com/)** - Component library
+- **[React Hook Form](https://react-hook-form.com/)** - Form management
+- **[oRPC](https://orpc.unnoq.com/)** - Type-safe RPC framework
+- **[Prisma](https://www.prisma.io/)** - Database ORM
+- **[Better Auth](https://www.better-auth.com/)** - Authentication
+- **[Storybook](https://storybook.js.org/)** - Component development
+- **[Vitest](https://vitest.dev/)** - Unit testing
+- **[Playwright](https://playwright.dev/)** - E2E testing
 
-## Create beautiful pages
+## Learn More
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed installation and setup instructions
+  </Card>
+  <Card title="Project Structure" icon="folder-tree" href="/project-structure">
+    Understand the project organization and conventions
+  </Card>
+  <Card title="Core Concepts" icon="book-open" href="/core-concepts/routing">
+    Learn about routing, state management, and data fetching
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Community & Support
 
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={2}>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/bearstudio/start-ui-web">
+    Star the repo, report issues, and contribute
+  </Card>
+  <Card title="BearStudio Team" icon="users" href="https://www.bearstudio.fr/team">
+    Meet the team behind Start UI
+  </Card>
+</CardGroup>

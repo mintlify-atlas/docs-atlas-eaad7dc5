@@ -1,0 +1,708 @@
+---
+title: Book API
+description: Complete CRUD operations for managing books
+icon: book
+---
+
+## Overview
+
+The Book API provides comprehensive endpoints for managing books in your application. All endpoints require authentication and specific permissions.
+
+## Permissions
+
+Book API endpoints require the following permissions:
+
+- `book:read` - View books
+- `book:create` - Create new books
+- `book:update` - Update existing books
+- `book:delete` - Delete books
+
+## Endpoints
+
+### List All Books
+
+Retrieve a paginated list of books with optional search.
+
+```typescript
+GET /books
+```
+
+**Source**: `src/server/routers/book.ts:11-84`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `book:read` permission
+</ParamField>
+
+#### Query Parameters
+
+<ParamField query="cursor" type="string" optional>
+  Cursor for pagination (ID of the last book from the previous page)
+</ParamField>
+
+<ParamField query="limit" type="number" default="20">
+  Number of books per page (min: 1, max: 100)
+</ParamField>
+
+<ParamField query="searchTerm" type="string" default="" optional>
+  Search term to filter books by title or author (case-insensitive)
+</ParamField>
+
+#### Response
+
+<ResponseField name="items" type="Book[]">
+  Array of book objects for the current page
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string" optional>
+  Cursor for the next page (undefined if no more pages)
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total count of books matching the search criteria
+</ResponseField>
+
+#### Book Object
+
+<Expandable title="Book Object Fields">
+  <ResponseField name="id" type="string">
+    Unique book identifier
+  </ResponseField>
+
+  <ResponseField name="title" type="string">
+    Book title
+  </ResponseField>
+
+  <ResponseField name="author" type="string">
+    Book author
+  </ResponseField>
+
+  <ResponseField name="genre" type="Genre | null">
+    Associated genre object (includes id, name, color)
+  </ResponseField>
+
+  <ResponseField name="publisher" type="string | null">
+    Publisher name
+  </ResponseField>
+
+  <ResponseField name="coverId" type="string | null">
+    ID reference to the book cover image
+  </ResponseField>
+
+  <ResponseField name="createdAt" type="Date">
+    Creation timestamp
+  </ResponseField>
+
+  <ResponseField name="updatedAt" type="Date">
+    Last update timestamp
+  </ResponseField>
+</Expandable>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function BookList() {
+  const { data, isLoading, fetchNextPage, hasNextPage } = 
+    orpc.book.getAll.useInfiniteQuery({
+      input: (page) => ({
+        searchTerm: 'typescript',
+        limit: 20,
+        cursor: page?.nextCursor,
+      }),
+      getNextPageParam: (lastPage) => 
+        lastPage.nextCursor ? { nextCursor: lastPage.nextCursor } : undefined,
+    });
+
+  if (isLoading) return <div>Loading...</div>;
+
+  return (
+    <div>
+      {data?.pages.flatMap(page => page.items).map(book => (
+        <div key={book.id}>
+          <h3>{book.title}</h3>
+          <p>by {book.author}</p>
+          {book.genre && <span>{book.genre.name}</span>}
+        </div>
+      ))}
+      
+      {hasNextPage && (
+        <button onClick={() => fetchNextPage()}>
+          Load More
+        </button>
+      )}
+      
+      <p>Total: {data?.pages[0]?.total} books</p>
+    </div>
+  );
+}
+```
+
+```typescript REST API
+const params = new URLSearchParams({
+  searchTerm: 'typescript',
+  limit: '20',
+});
+
+const response = await fetch(`/api/rest/books?${params}`, {
+  headers: {
+    'Authorization': 'Bearer YOUR_TOKEN',
+  },
+});
+
+const data = await response.json();
+// data.items: Book[]
+// data.nextCursor: string | undefined
+// data.total: number
+```
+
+```bash cURL
+curl "https://your-app.com/api/rest/books?searchTerm=typescript&limit=20" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+</CodeGroup>
+
+---
+
+### Get Book by ID
+
+Retrieve a single book by its ID.
+
+```typescript
+GET /books/{id}
+```
+
+**Source**: `src/server/routers/book.ts:86-115`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `book:read` permission
+</ParamField>
+
+#### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Unique book identifier
+</ParamField>
+
+#### Response
+
+<ResponseField name="Book" type="object">
+  Single book object with all fields including associated genre
+</ResponseField>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+import { useParams } from '@tanstack/react-router';
+
+function BookDetail() {
+  const { bookId } = useParams({ from: '/books/$bookId' });
+  
+  const { data: book, isLoading, error } = orpc.book.getById.useQuery({
+    input: { id: bookId },
+  });
+
+  if (isLoading) return <div>Loading book...</div>;
+  if (error) return <div>Book not found</div>;
+
+  return (
+    <div>
+      <h1>{book.title}</h1>
+      <p>Author: {book.author}</p>
+      <p>Publisher: {book.publisher}</p>
+      {book.genre && (
+        <span style={{ color: book.genre.color }}>
+          {book.genre.name}
+        </span>
+      )}
+    </div>
+  );
+}
+```
+
+```typescript REST API
+const response = await fetch('/api/rest/books/book-123', {
+  headers: {
+    'Authorization': 'Bearer YOUR_TOKEN',
+  },
+});
+
+if (!response.ok) {
+  if (response.status === 404) {
+    console.error('Book not found');
+  }
+  throw new Error('Failed to fetch book');
+}
+
+const book = await response.json();
+```
+
+```bash cURL
+curl https://your-app.com/api/rest/books/book-123 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+</CodeGroup>
+
+---
+
+### Create Book
+
+Create a new book.
+
+```typescript
+POST /books
+```
+
+**Source**: `src/server/routers/book.ts:117-140`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `book:create` permission
+</ParamField>
+
+#### Request Body
+
+<ParamField body="title" type="string" required>
+  Book title
+</ParamField>
+
+<ParamField body="author" type="string" required>
+  Book author
+</ParamField>
+
+<ParamField body="genreId" type="string" required>
+  ID of the genre to associate with this book
+</ParamField>
+
+<ParamField body="publisher" type="string" optional>
+  Publisher name
+</ParamField>
+
+<ParamField body="coverId" type="string" optional>
+  ID reference to the book cover image
+</ParamField>
+
+#### Response
+
+<ResponseField name="Book" type="object">
+  The newly created book object
+</ResponseField>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { zFormFieldsBook } from '@/features/book/schema';
+
+function CreateBookForm() {
+  const { mutate, isPending } = orpc.book.create.useMutation({
+    onSuccess: (newBook) => {
+      console.log('Book created:', newBook.id);
+      // Invalidate cache to refetch book list
+      orpc.book.getAll.invalidate();
+    },
+  });
+
+  const form = useForm({
+    resolver: zodResolver(zFormFieldsBook()),
+  });
+
+  const onSubmit = (values) => {
+    mutate({ input: values });
+  };
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)}>
+      <input {...form.register('title')} placeholder="Title" required />
+      <input {...form.register('author')} placeholder="Author" required />
+      <select {...form.register('genreId')} required>
+        {/* Genre options */}
+      </select>
+      <input {...form.register('publisher')} placeholder="Publisher" />
+      <button type="submit" disabled={isPending}>
+        {isPending ? 'Creating...' : 'Create Book'}
+      </button>
+    </form>
+  );
+}
+```
+
+```typescript REST API
+const response = await fetch('/api/rest/books', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_TOKEN',
+  },
+  body: JSON.stringify({
+    title: 'Learning TypeScript',
+    author: 'Josh Goldberg',
+    genreId: 'genre-123',
+    publisher: "O'Reilly Media",
+    coverId: null,
+  }),
+});
+
+const newBook = await response.json();
+console.log('Created book:', newBook.id);
+```
+
+```bash cURL
+curl -X POST https://your-app.com/api/rest/books \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "title": "Learning TypeScript",
+    "author": "Josh Goldberg",
+    "genreId": "genre-123",
+    "publisher": "O'\''Reilly Media"
+  }'
+```
+
+</CodeGroup>
+
+---
+
+### Update Book
+
+Update an existing book.
+
+```typescript
+POST /books/{id}
+```
+
+**Source**: `src/server/routers/book.ts:142-166`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `book:update` permission
+</ParamField>
+
+#### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Unique book identifier
+</ParamField>
+
+#### Request Body
+
+<ParamField body="title" type="string" required>
+  Updated book title
+</ParamField>
+
+<ParamField body="author" type="string" required>
+  Updated book author
+</ParamField>
+
+<ParamField body="genreId" type="string" required>
+  Updated genre ID
+</ParamField>
+
+<ParamField body="publisher" type="string" optional>
+  Updated publisher name (set to null to remove)
+</ParamField>
+
+<ParamField body="coverId" type="string" optional>
+  Updated cover image ID (set to null to remove)
+</ParamField>
+
+#### Response
+
+<ResponseField name="Book" type="object">
+  The updated book object
+</ResponseField>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function EditBookForm({ bookId, initialData }) {
+  const { mutate, isPending } = orpc.book.updateById.useMutation({
+    onSuccess: () => {
+      // Invalidate specific book and list queries
+      orpc.book.getById.invalidate({ input: { id: bookId } });
+      orpc.book.getAll.invalidate();
+    },
+  });
+
+  const handleSubmit = (values) => {
+    mutate({
+      input: {
+        id: bookId,
+        ...values,
+      },
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* Form fields */}
+      <button type="submit" disabled={isPending}>
+        Update Book
+      </button>
+    </form>
+  );
+}
+```
+
+```typescript REST API
+const response = await fetch('/api/rest/books/book-123', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_TOKEN',
+  },
+  body: JSON.stringify({
+    title: 'Learning TypeScript (2nd Edition)',
+    author: 'Josh Goldberg',
+    genreId: 'genre-123',
+    publisher: "O'Reilly Media",
+    coverId: 'new-cover-id',
+  }),
+});
+
+const updatedBook = await response.json();
+```
+
+```bash cURL
+curl -X POST https://your-app.com/api/rest/books/book-123 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "title": "Learning TypeScript (2nd Edition)",
+    "author": "Josh Goldberg",
+    "genreId": "genre-123"
+  }'
+```
+
+</CodeGroup>
+
+---
+
+### Delete Book
+
+Delete a book by its ID.
+
+```typescript
+DELETE /books/{id}
+```
+
+**Source**: `src/server/routers/book.ts:168-189`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `book:delete` permission
+</ParamField>
+
+#### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Unique book identifier
+</ParamField>
+
+#### Response
+
+<ResponseField name="void" type="void">
+  Returns void on successful deletion
+</ResponseField>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function DeleteBookButton({ bookId }) {
+  const { mutate, isPending } = orpc.book.deleteById.useMutation({
+    onSuccess: () => {
+      // Invalidate cache and redirect
+      orpc.book.getAll.invalidate();
+      router.navigate({ to: '/books' });
+    },
+  });
+
+  const handleDelete = () => {
+    if (confirm('Are you sure you want to delete this book?')) {
+      mutate({ input: { id: bookId } });
+    }
+  };
+
+  return (
+    <button onClick={handleDelete} disabled={isPending}>
+      {isPending ? 'Deleting...' : 'Delete Book'}
+    </button>
+  );
+}
+```
+
+```typescript REST API
+const response = await fetch('/api/rest/books/book-123', {
+  method: 'DELETE',
+  headers: {
+    'Authorization': 'Bearer YOUR_TOKEN',
+  },
+});
+
+if (response.ok) {
+  console.log('Book deleted successfully');
+}
+```
+
+```bash cURL
+curl -X DELETE https://your-app.com/api/rest/books/book-123 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+</CodeGroup>
+
+---
+
+## Schema Definitions
+
+### Book Schema
+
+**Source**: `src/features/book/schema.ts:10-20`
+
+```typescript
+import { z } from 'zod';
+import { zu } from '@/lib/zod/zod-utils';
+import { zGenre } from '@/features/genre/schema';
+
+export const zBook = () =>
+  z.object({
+    id: z.string(),
+    title: zu.fieldText.required({ error: t('book:common.title.required') }),
+    author: zu.fieldText.required(),
+    genre: zGenre().nullish(),
+    publisher: zu.fieldText.nullish(),
+    createdAt: z.date(),
+    updatedAt: z.date(),
+    coverId: z.string().nullish(),
+  });
+```
+
+### Book Form Schema
+
+**Source**: `src/features/book/schema.ts:23-26`
+
+```typescript
+export const zFormFieldsBook = () =>
+  zBook()
+    .pick({ title: true, author: true, publisher: true, coverId: true })
+    .extend({ genreId: zu.fieldText.required() });
+```
+
+---
+
+## Error Handling
+
+<ResponseField name="UNAUTHORIZED" type="401">
+  Missing or invalid authentication credentials
+</ResponseField>
+
+<ResponseField name="FORBIDDEN" type="403">
+  User lacks the required permission (e.g., `book:create`)
+</ResponseField>
+
+<ResponseField name="NOT_FOUND" type="404">
+  Book with the specified ID does not exist
+</ResponseField>
+
+<ResponseField name="CONFLICT" type="409">
+  Unique constraint violation (unlikely for books)
+</ResponseField>
+
+<ResponseField name="BAD_REQUEST" type="400">
+  - Invalid input parameters
+  - Foreign key constraint violation (invalid `genreId`)
+  - Validation errors
+</ResponseField>
+
+### Error Examples
+
+```json
+// Book not found
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Unable to find book with the provided input",
+    "status": 404
+  }
+}
+```
+
+```json
+// Invalid genre ID
+{
+  "error": {
+    "code": "BAD_REQUEST",
+    "message": "Foreign key constraint violation",
+    "status": 400
+  }
+}
+```
+
+---
+
+## Search Implementation
+
+The search functionality filters books by title or author (case-insensitive):
+
+```typescript
+const where = {
+  OR: [
+    {
+      title: {
+        contains: input.searchTerm,
+        mode: 'insensitive',
+      },
+    },
+    {
+      author: {
+        contains: input.searchTerm,
+        mode: 'insensitive',
+      },
+    },
+  ],
+} satisfies Prisma.BookWhereInput;
+```
+
+Search examples:
+- `searchTerm: 'typescript'` - Finds books with "typescript" in title or author
+- `searchTerm: 'josh'` - Finds books by authors named Josh
+- `searchTerm: ''` - Returns all books (no filter)
+
+---
+
+## Related APIs
+
+<CardGroup cols={2}>
+  <Card title="Genre API" icon="tags" href="/api/genre">
+    Manage book genres referenced by `genreId`
+  </Card>
+  <Card title="File Upload" icon="cloud-arrow-up" href="/features/file-uploads">
+    Learn how to upload book cover images
+  </Card>
+</CardGroup>

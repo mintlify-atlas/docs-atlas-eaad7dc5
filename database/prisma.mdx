@@ -1,0 +1,595 @@
+---
+title: Prisma Setup
+description: Prisma configuration, migrations, seeding, and database operations
+---
+
+Start UI [web] uses Prisma as the ORM (Object-Relational Mapping) tool for type-safe database access with PostgreSQL.
+
+## Configuration
+
+Prisma is configured in `prisma/schema.prisma` with a custom client output directory:
+
+```prisma
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/server/db/generated"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+```
+
+<Info>
+The Prisma client is generated to `src/server/db/generated` instead of the default `node_modules/.prisma/client` to keep all generated code organized within the server directory.
+</Info>
+
+## Environment Setup
+
+Configure your database connection in `.env`:
+
+```bash
+# PostgreSQL connection string
+DATABASE_URL="postgres://startui:startui@localhost:5432/startui"
+```
+
+### Docker Setup
+
+For local development, you can use the provided Docker setup:
+
+```bash
+# Initialize Docker containers (PostgreSQL, MinIO, MailDev)
+pnpm dk:init
+
+# Start containers
+pnpm dk:start
+
+# Stop containers
+pnpm dk:stop
+
+# Clear containers and volumes
+pnpm dk:clear
+```
+
+<Note>
+The Docker setup automatically configures PostgreSQL with the credentials from your `.env` file.
+</Note>
+
+## Database Client
+
+The Prisma client is accessed through a singleton instance with custom extensions:
+
+```typescript
+// src/server/db/index.ts
+import { PrismaClient } from './generated/client';
+
+const levels = {
+  trace: ['query', 'error', 'warn', 'info'],
+  debug: ['error', 'warn', 'info'],
+  info: ['error', 'warn', 'info'],
+  warn: ['error', 'warn'],
+  error: ['error'],
+  fatal: ['error'],
+} satisfies Record<string, ('query' | 'error' | 'warn' | 'info')[]>;
+
+function createPrisma() {
+  return new PrismaClient({
+    log: levels[envServer.LOGGER_LEVEL],
+  }).$extends({
+    name: 'server-timing',
+    query: {
+      $allModels: {
+        async $allOperations({ query, args, model, operation }) {
+          const start = performance.now();
+          const result = await query(args);
+          const duration = performance.now() - start;
+
+          const store = timingStore.getStore();
+          if (store) {
+            store.prisma.push({ model, operation, duration });
+          }
+
+          return result;
+        },
+      },
+    },
+  });
+}
+
+export const db = globalForPrisma.prisma ?? createPrisma();
+```
+
+<Accordion title="Client Features">
+
+**Logging**: Configured based on `LOGGER_LEVEL` environment variable (trace, debug, info, warn, error, fatal)
+
+**Server Timing Extension**: Automatically tracks query performance and adds timing information to server responses
+
+**Singleton Pattern**: Reuses the same client instance in development to prevent connection exhaustion
+
+</Accordion>
+
+## Database Operations
+
+### Generate Prisma Client
+
+Generate the Prisma client after schema changes:
+
+```bash
+pnpm gen:prisma
+```
+
+This runs `prisma generate --no-hints` and creates the type-safe client in `src/server/db/generated`.
+
+<Info>
+The Prisma client is automatically generated during `postinstall`, so you typically don't need to run this manually.
+</Info>
+
+### Push Schema Changes
+
+Push schema changes to the database without creating migrations:
+
+```bash
+pnpm db:push
+```
+
+This command:
+- Synchronizes your Prisma schema with the database
+- Creates tables and columns that don't exist
+- Updates existing tables to match the schema
+- **Does not create migration files**
+
+<Warning>
+`db:push` is perfect for development but not recommended for production. Use migrations for production deployments.
+</Warning>
+
+### Initialize Database
+
+Set up a fresh database with schema and seed data:
+
+```bash
+pnpm db:init
+```
+
+This runs:
+1. `pnpm db:push` - Push schema to database
+2. `pnpm db:seed` - Seed the database with initial data
+
+## Database Seeding
+
+Seed your database with initial data for development and testing:
+
+```bash
+pnpm db:seed
+```
+
+The seed script is located at `prisma/seed/index.ts`:
+
+```typescript
+import { db } from '@/server/db';
+import { createBooks } from './book';
+import { createUsers } from './user';
+
+async function main() {
+  await createBooks();
+  await createUsers();
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(() => {
+    db.$disconnect();
+  });
+```
+
+### User Seeding
+
+The user seeder creates test users and admin accounts:
+
+<Steps>
+  <Step title="Generate 98 Random Users">
+    Creates random users using Faker.js (if not already at 98+ users)
+    
+    ```typescript
+    await db.user.create({
+      data: {
+        name: faker.person.fullName(),
+        email: faker.internet.email().toLowerCase(),
+        emailVerified: true,
+        role: 'user',
+      },
+    });
+    ```
+  </Step>
+  
+  <Step title="Create Default User">
+    Creates a test user account if it doesn't exist:
+    
+    ```typescript
+    await db.user.create({
+      data: {
+        name: 'User',
+        email: 'user@user.com',
+        emailVerified: true,
+        onboardedAt: new Date(),
+        role: 'user',
+      },
+    });
+    ```
+    
+    **Login**: `user@user.com`
+  </Step>
+  
+  <Step title="Create Admin Account">
+    Creates an admin account if it doesn't exist:
+    
+    ```typescript
+    await db.user.create({
+      data: {
+        name: 'Admin',
+        email: 'admin@admin.com',
+        emailVerified: true,
+        role: 'admin',
+        onboardedAt: new Date(),
+      },
+    });
+    ```
+    
+    **Login**: `admin@admin.com`
+  </Step>
+</Steps>
+
+<Note>
+The seeder is idempotent - it checks for existing users before creating new ones, so you can run it multiple times safely.
+</Note>
+
+### Book Seeding
+
+The book seeder populates genres and books:
+
+<Steps>
+  <Step title="Create Genres">
+    Seeds 10 predefined genres with colors:
+    
+    ```typescript
+    const genres = [
+      ['Adventure', '#9F0712'],
+      ['Business', '#973C00'],
+      ['Classic', '#3C6300'],
+      ['Drama', '#006045'],
+      ['Fantasy', '#005F78'],
+      ['Mythology', '#193CB8'],
+      ['Poetry', '#5D0EC0'],
+      ['Romance', '#6E11B0'],
+      ['Science Fiction', '#8A0194'],
+      ['Thriller', '#A50036'],
+    ] as const;
+
+    await db.genre.createMany({
+      data: genres.map(([name, color]) => ({ name, color })),
+    });
+    ```
+  </Step>
+  
+  <Step title="Create Books">
+    Creates books from `book-data.json` with random genres:
+    
+    ```typescript
+    await db.book.create({
+      data: {
+        author,
+        title,
+        genre: {
+          connect: existingGenres[randomInt(existingGenres.length)],
+        },
+        publisher: faker.book.publisher(),
+      },
+    });
+    ```
+  </Step>
+</Steps>
+
+## Prisma Studio
+
+Open Prisma Studio to visually browse and edit your database:
+
+```bash
+pnpm db:ui
+```
+
+This launches Prisma Studio at `http://localhost:5555` where you can:
+
+<CardGroup cols={2}>
+  <Card title="Browse Data" icon="table">
+    View all tables and records in a spreadsheet-like interface
+  </Card>
+  <Card title="Edit Records" icon="pen-to-square">
+    Create, update, and delete records directly
+  </Card>
+  <Card title="Filter & Search" icon="filter">
+    Find specific records using filters and search
+  </Card>
+  <Card title="View Relations" icon="diagram-project">
+    Navigate between related records easily
+  </Card>
+</CardGroup>
+
+## Using Prisma Client
+
+Import and use the database client in your server code:
+
+```typescript
+import { db } from '@/server/db';
+
+// Find a user by email
+const user = await db.user.findUnique({
+  where: { email: 'user@user.com' },
+  include: {
+    sessions: true,
+    accounts: true,
+  },
+});
+
+// Create a new book
+const book = await db.book.create({
+  data: {
+    title: 'The Great Gatsby',
+    author: 'F. Scott Fitzgerald',
+    genre: {
+      connect: { name: 'Classic' },
+    },
+  },
+});
+
+// Find books with relations
+const books = await db.book.findMany({
+  where: {
+    genre: {
+      name: 'Fantasy',
+    },
+  },
+  include: {
+    genre: true,
+  },
+  orderBy: {
+    createdAt: 'desc',
+  },
+  take: 10,
+});
+```
+
+## Common Operations
+
+### Create Records
+
+```typescript
+// Create a single record
+const user = await db.user.create({
+  data: {
+    name: 'John Doe',
+    email: 'john@example.com',
+    emailVerified: true,
+    role: 'user',
+  },
+});
+
+// Create multiple records
+await db.genre.createMany({
+  data: [
+    { name: 'Horror', color: '#000000' },
+    { name: 'Comedy', color: '#FFFF00' },
+  ],
+});
+```
+
+### Query Records
+
+```typescript
+// Find unique record
+const user = await db.user.findUnique({
+  where: { email: 'admin@admin.com' },
+});
+
+// Find first matching record
+const book = await db.book.findFirst({
+  where: { author: 'J.K. Rowling' },
+});
+
+// Find many with filters
+const users = await db.user.findMany({
+  where: {
+    role: 'admin',
+    banned: false,
+  },
+  orderBy: { createdAt: 'desc' },
+});
+```
+
+### Update Records
+
+```typescript
+// Update single record
+const user = await db.user.update({
+  where: { id: 'user-id' },
+  data: {
+    name: 'New Name',
+    onboardedAt: new Date(),
+  },
+});
+
+// Update many records
+await db.user.updateMany({
+  where: { role: 'user' },
+  data: { banned: false },
+});
+```
+
+### Delete Records
+
+```typescript
+// Delete single record
+await db.user.delete({
+  where: { id: 'user-id' },
+});
+
+// Delete many records
+await db.session.deleteMany({
+  where: {
+    expiresAt: { lt: new Date() },
+  },
+});
+```
+
+### Transactions
+
+Use transactions for operations that must succeed or fail together:
+
+```typescript
+await db.$transaction(async (tx) => {
+  // Create user
+  const user = await tx.user.create({
+    data: {
+      name: 'New User',
+      email: 'new@example.com',
+      emailVerified: false,
+      role: 'user',
+    },
+  });
+
+  // Create session for the user
+  await tx.session.create({
+    data: {
+      userId: user.id,
+      token: 'session-token',
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+  });
+});
+```
+
+## Package Scripts
+
+All available database-related scripts:
+
+| Script | Command | Description |
+|--------|---------|-------------|
+| `gen:prisma` | `prisma generate --no-hints` | Generate Prisma client |
+| `db:init` | `pnpm db:push && pnpm db:seed` | Initialize database with schema and seed data |
+| `db:push` | `prisma db push` | Push schema changes to database |
+| `db:ui` | `prisma studio` | Open Prisma Studio |
+| `db:seed` | `node ./run-jiti ./prisma/seed/index.ts` | Seed database with initial data |
+
+## Best Practices
+
+<Steps>
+  <Step title="Use Transactions for Complex Operations">
+    When creating or updating multiple related records, wrap operations in `$transaction` to ensure atomicity.
+  </Step>
+  
+  <Step title="Enable Query Logging in Development">
+    Set `LOGGER_LEVEL=trace` in development to see all database queries.
+  </Step>
+  
+  <Step title="Use Type-Safe Queries">
+    Leverage Prisma's TypeScript types to catch errors at compile time:
+    
+    ```typescript
+    // TypeScript will error if 'eemail' is misspelled
+    const user = await db.user.findUnique({
+      where: { email: 'user@example.com' },
+    });
+    ```
+  </Step>
+  
+  <Step title="Include Relations Selectively">
+    Only include relations you need to minimize database queries:
+    
+    ```typescript
+    // Good - only includes what's needed
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      include: { sessions: true },
+    });
+    
+    // Avoid - includes unnecessary data
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      include: { sessions: true, accounts: true },
+    });
+    ```
+  </Step>
+  
+  <Step title="Use db:push for Development">
+    Use `pnpm db:push` during development for quick iterations. For production, create proper migrations.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<Accordion title="Error: Can't reach database server">
+
+Ensure your PostgreSQL server is running:
+
+```bash
+# Start Docker containers
+pnpm dk:start
+
+# Check if PostgreSQL is running
+docker ps
+```
+
+</Accordion>
+
+<Accordion title="Error: Prisma client not generated">
+
+Regenerate the Prisma client:
+
+```bash
+pnpm gen:prisma
+```
+
+</Accordion>
+
+<Accordion title="Error: Module not found">
+
+If you see module resolution errors, ensure the output path in `schema.prisma` matches your import:
+
+```prisma
+generator client {
+  output = "../src/server/db/generated"
+}
+```
+
+```typescript
+import { PrismaClient } from './generated/client';
+```
+
+</Accordion>
+
+<Accordion title="Connection pool exhausted">
+
+In development, make sure you're using the singleton pattern to avoid creating multiple Prisma client instances. The provided `src/server/db/index.ts` already implements this.
+
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Database Schema" icon="database" href="/database/schema">
+    Learn about all database models and relationships
+  </Card>
+  <Card title="Authentication" icon="lock" href="/auth/overview">
+    Understand how auth models are used
+  </Card>
+  <Card title="Prisma Documentation" icon="book" href="https://www.prisma.io/docs">
+    Official Prisma documentation
+  </Card>
+  <Card title="Better Auth" icon="shield" href="https://better-auth.com">
+    Learn about the authentication library
+  </Card>
+</CardGroup>

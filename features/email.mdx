@@ -1,0 +1,513 @@
+---
+title: Email
+description: Learn how to send emails with React Email templates and Nodemailer, including development previews
+---
+
+Start UI [web] uses [React Email](https://react.email/) for email templates and [Nodemailer](https://nodemailer.com/) for sending emails.
+
+## Overview
+
+The email system includes:
+
+- **React Email**: Type-safe email templates with React components
+- **Nodemailer**: Reliable email delivery
+- **MailDev**: Email testing in development
+- **i18n Support**: Internationalized email content
+- **Preview Route**: Preview emails in the browser during development
+
+## Configuration
+
+### Environment Variables
+
+Configure email settings in `.env`:
+
+```bash .env
+# SMTP Configuration
+EMAIL_SERVER="smtp://0.0.0.0:1025"
+EMAIL_FROM="Start UI <noreply@example.com>"
+
+# MailDev (Development)
+DOCKER_MAILDEV_SMTP_PORT="1025"
+DOCKER_MAILDEV_UI_PORT="1080"
+```
+
+### Email Transport
+
+The Nodemailer transport is configured in `src/server/email.tsx`:
+
+```tsx src/server/email.tsx
+import { render } from '@react-email/render';
+import nodemailer from 'nodemailer';
+import { ReactElement } from 'react';
+
+const transport = nodemailer.createTransport(envServer.EMAIL_SERVER);
+
+export const sendEmail = async ({
+  template,
+  ...options
+}: Omit<MailOptions, 'html'> &
+  Required<Pick<MailOptions, 'subject'>> & { template: ReactElement }) => {
+  if (envClient.VITE_IS_DEMO) {
+    return;
+  }
+
+  const html = await render(template);
+  return transport.sendMail({
+    from: envServer.EMAIL_FROM,
+    html,
+    ...options,
+  });
+};
+```
+
+## Email Templates
+
+Create email templates using React components.
+
+### Template Structure
+
+```tsx src/emails/templates/login-code.tsx
+import { Container, Heading, Section, Text } from '@react-email/components';
+import i18n from '@/lib/i18n';
+import { EmailFooter } from '@/emails/components/email-footer';
+import { EmailLayout } from '@/emails/components/email-layout';
+import { styles } from '@/emails/styles';
+
+export const TemplateLoginCode = (props: {
+  language: string;
+  code: string;
+}) => {
+  i18n.changeLanguage(props.language);
+  
+  return (
+    <EmailLayout
+      preview={i18n.t('emails:loginCode.preview')}
+      language={props.language}
+    >
+      <Container style={styles.container}>
+        <Heading style={styles.h1}>
+          {i18n.t('emails:loginCode.title')}
+        </Heading>
+        
+        <Section style={styles.section}>
+          <Text style={styles.text}>
+            {i18n.t('emails:loginCode.intro')}
+          </Text>
+          
+          <Text style={styles.code}>{props.code}</Text>
+          
+          <Text style={styles.textMuted}>
+            {i18n.t('emails:loginCode.validityTime', {
+              expiration: AUTH_EMAIL_OTP_EXPIRATION_IN_MINUTES,
+            })}
+            <br />
+            {i18n.t('emails:loginCode.ignoreHelper')}
+          </Text>
+        </Section>
+        
+        <EmailFooter />
+      </Container>
+    </EmailLayout>
+  );
+};
+
+export default TemplateLoginCode;
+```
+
+### Email Layout
+
+Reusable layout component:
+
+```tsx src/emails/components/email-layout.tsx
+import { Html, Head, Body, Preview } from '@react-email/components';
+import { ReactNode } from 'react';
+
+export const EmailLayout = ({
+  children,
+  preview,
+  language = 'en',
+}: {
+  children: ReactNode;
+  preview: string;
+  language?: string;
+}) => (
+  <Html lang={language} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+    <Head />
+    <Preview>{preview}</Preview>
+    <Body style={{ fontFamily: 'sans-serif', backgroundColor: '#f4f4f4' }}>
+      {children}
+    </Body>
+  </Html>
+);
+```
+
+### Email Styles
+
+```ts src/emails/styles.ts
+export const styles = {
+  container: {
+    margin: '0 auto',
+    padding: '20px 0 48px',
+    maxWidth: '560px',
+  },
+  h1: {
+    color: '#000',
+    fontSize: '24px',
+    fontWeight: '600',
+    lineHeight: '1.25',
+    padding: '0',
+    margin: '0 0 15px',
+  },
+  text: {
+    color: '#000',
+    fontSize: '14px',
+    lineHeight: '24px',
+    margin: '0 0 10px',
+  },
+  textMuted: {
+    color: '#666',
+    fontSize: '12px',
+    lineHeight: '20px',
+  },
+  code: {
+    fontSize: '32px',
+    fontWeight: 'bold',
+    letterSpacing: '8px',
+    textAlign: 'center' as const,
+    padding: '20px',
+    backgroundColor: '#f4f4f4',
+    borderRadius: '4px',
+    margin: '20px 0',
+  },
+  section: {
+    padding: '24px',
+    backgroundColor: '#fff',
+    borderRadius: '8px',
+  },
+};
+```
+
+## Sending Emails
+
+### Basic Usage
+
+```tsx
+import { sendEmail } from '@/server/email';
+import TemplateLoginCode from '@/emails/templates/login-code';
+
+await sendEmail({
+  to: 'user@example.com',
+  subject: 'Your login code',
+  template: <TemplateLoginCode language="en" code="123456" />,
+});
+```
+
+### With Better Auth
+
+Integration with Better Auth email OTP:
+
+```tsx src/server/auth.tsx
+import i18n from '@/lib/i18n';
+import { sendEmail } from '@/server/email';
+import TemplateLoginCode from '@/emails/templates/login-code';
+import { getUserLanguage } from '@/server/utils';
+
+emailOTP({
+  async sendVerificationOTP({ email, otp, type }) {
+    await match(type)
+      .with('sign-in', async () => {
+        await sendEmail({
+          to: email,
+          subject: i18n.t('emails:loginCode.subject', {
+            lng: getUserLanguage(),
+          }),
+          template: (
+            <TemplateLoginCode
+              language={getUserLanguage()}
+              code={otp}
+            />
+          ),
+        });
+      })
+      .with('email-verification', async () => {
+        // Implement email verification template
+      })
+      .exhaustive();
+  },
+})
+```
+
+### Multiple Recipients
+
+```tsx
+await sendEmail({
+  to: ['user1@example.com', 'user2@example.com'],
+  subject: 'Notification',
+  template: <NotificationTemplate />,
+});
+```
+
+### With Attachments
+
+```tsx
+await sendEmail({
+  to: 'user@example.com',
+  subject: 'Invoice',
+  template: <InvoiceTemplate />,
+  attachments: [
+    {
+      filename: 'invoice.pdf',
+      path: '/path/to/invoice.pdf',
+    },
+  ],
+});
+```
+
+## Development Preview
+
+Preview emails in the browser during development.
+
+### Preview Route
+
+```ts src/routes/api/dev.email.$template.ts
+import { previewEmailRoute } from '@/server/email';
+
+export const Route = createFileRoute('/api/dev/email/$template')({
+  server: {
+    handlers: {
+      GET: async ({ params, request }) => {
+        const url = new URL(request.url);
+        const props = Object.fromEntries(url.searchParams);
+        
+        return previewEmailRoute(params.template, props);
+      },
+    },
+  },
+});
+```
+
+### Preview Function
+
+```tsx src/server/email.tsx
+export const previewEmailRoute = async (
+  template: string,
+  props: Record<string, string>
+) => {
+  let Email;
+  try {
+    const EmailModule = await import(`../emails/templates/${template}.tsx`);
+    Email = EmailModule.default;
+  } catch {
+    return new Response('Template not found', { status: 404 });
+  }
+
+  const html = await render(
+    <Email language={props?.language ?? DEFAULT_LANGUAGE_KEY} {...props} />
+  );
+
+  return new Response(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html' },
+  });
+};
+```
+
+### Preview URL
+
+Access email previews in your browser:
+
+```
+http://localhost:3000/api/dev/email/login-code?code=123456&language=en
+```
+
+<Info>
+Preview routes are only available in development mode for security.
+</Info>
+
+## MailDev (Development)
+
+MailDev catches all emails sent during development.
+
+<Steps>
+  <Step title="Start MailDev">
+    MailDev starts automatically with Docker:
+
+    ```bash
+    docker-compose up -d
+    ```
+  </Step>
+
+  <Step title="Access MailDev UI">
+    Open your browser to: `http://localhost:1080`
+  </Step>
+
+  <Step title="View Sent Emails">
+    All emails sent by your app appear in the MailDev inbox.
+  </Step>
+</Steps>
+
+<Note>
+Emails are never actually sent in development - they're all caught by MailDev.
+</Note>
+
+## Internationalization
+
+Support multiple languages in email templates.
+
+### Translation Files
+
+```json src/locales/en/emails.json
+{
+  "loginCode": {
+    "subject": "Your login code for Start UI",
+    "preview": "Your verification code to login",
+    "title": "Your login code",
+    "intro": "Use this code to complete your login:",
+    "validityTime": "This code expires in {{expiration}} minutes.",
+    "ignoreHelper": "If you didn't request this code, you can safely ignore this email."
+  }
+}
+```
+
+### Using Translations
+
+```tsx
+import i18n from '@/lib/i18n';
+
+export const TemplateLoginCode = ({ language, code }: Props) => {
+  i18n.changeLanguage(language);
+  
+  return (
+    <EmailLayout preview={i18n.t('emails:loginCode.preview')}>
+      <Heading>{i18n.t('emails:loginCode.title')}</Heading>
+      <Text>{i18n.t('emails:loginCode.intro')}</Text>
+      <Text style={styles.code}>{code}</Text>
+    </EmailLayout>
+  );
+};
+```
+
+## React Email Components
+
+Use React Email's built-in components:
+
+```tsx
+import {
+  Html,
+  Head,
+  Body,
+  Container,
+  Section,
+  Heading,
+  Text,
+  Link,
+  Button,
+  Img,
+  Hr,
+  Preview,
+} from '@react-email/components';
+
+<Container>
+  <Heading>Welcome!</Heading>
+  <Text>Thanks for signing up.</Text>
+  
+  <Button href="https://example.com">
+    Get Started
+  </Button>
+  
+  <Hr />
+  
+  <Link href="https://example.com/privacy">
+    Privacy Policy
+  </Link>
+</Container>
+```
+
+## Production Setup
+
+### Gmail
+
+```bash .env
+EMAIL_SERVER="smtps://user@gmail.com:app-password@smtp.gmail.com"
+EMAIL_FROM="Your Name <user@gmail.com>"
+```
+
+### SendGrid
+
+```bash .env
+EMAIL_SERVER="smtp://apikey:YOUR_API_KEY@smtp.sendgrid.net:587"
+EMAIL_FROM="noreply@yourdomain.com"
+```
+
+### AWS SES
+
+```bash .env
+EMAIL_SERVER="smtp://ACCESS_KEY:SECRET_KEY@email-smtp.us-east-1.amazonaws.com:587"
+EMAIL_FROM="noreply@yourdomain.com"
+```
+
+### Postmark
+
+```bash .env
+EMAIL_SERVER="smtp://SERVER_TOKEN@smtp.postmarkapp.com:587"
+EMAIL_FROM="noreply@yourdomain.com"
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Test in MailDev" icon="flask">
+    Always preview emails in MailDev before deploying to production.
+  </Card>
+
+  <Card title="Responsive Design" icon="mobile">
+    Use tables and inline styles for maximum email client compatibility.
+  </Card>
+
+  <Card title="Plain Text Fallback" icon="file-lines">
+    Provide plain text versions for email clients that don't support HTML.
+  </Card>
+
+  <Card title="Internationalize" icon="language">
+    Support multiple languages to reach a global audience.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Emails not appearing in MailDev">
+    Check:
+    1. MailDev is running: `docker ps`
+    2. SMTP port matches `.env`: `EMAIL_SERVER="smtp://0.0.0.0:1025"`
+    3. MailDev UI is accessible: `http://localhost:1080`
+  </Accordion>
+
+  <Accordion title="Template not found">
+    Ensure:
+    1. Template file exists in `src/emails/templates/`
+    2. File exports a default component
+    3. File name matches preview URL parameter
+  </Accordion>
+
+  <Accordion title="Styles not rendering">
+    Email clients have limited CSS support:
+    - Use inline styles instead of classes
+    - Use tables for layout
+    - Test in multiple email clients
+  </Accordion>
+
+  <Accordion title="Production emails not sending">
+    Verify:
+    1. SMTP credentials are correct
+    2. SMTP server allows your IP
+    3. `EMAIL_FROM` domain is verified
+    4. Check spam folder
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Learn about [Authentication](/features/authentication) email integration
+- Configure [Internationalization](/features/internationalization) for emails
+- Set up [Database](/features/database) to track email delivery

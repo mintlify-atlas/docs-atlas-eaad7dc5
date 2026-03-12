@@ -1,0 +1,426 @@
+---
+title: Development Tools
+description: Learn about TanStack DevTools, React DevTools, and other development utilities
+---
+
+Start UI [web] includes a comprehensive suite of development tools for debugging and monitoring your application during development.
+
+## TanStack DevTools
+
+The project uses the unified `@tanstack/react-devtools` package which combines multiple TanStack tools into a single interface.
+
+### Configuration
+
+DevTools are configured in the root route (`src/routes/__root.tsx`):
+
+```tsx src/routes/__root.tsx
+import { TanStackDevtools } from '@tanstack/react-devtools';
+import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
+import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools';
+import { MailDevDevtoolPanel } from '@/devtools/maildev';
+
+function RootComponent() {
+  return (
+    <RootDocument>
+      <Providers>
+        <Outlet />
+        <TanStackDevtools
+          config={{
+            openHotkey: [], // Disable keyboard shortcut
+          }}
+          plugins={[
+            { name: 'Tanstack Query', render: <ReactQueryDevtoolsPanel /> },
+            {
+              name: 'Tanstack Router',
+              render: <TanStackRouterDevtoolsPanel />,
+            },
+            {
+              name: 'MailDev iframe',
+              render: <MailDevDevtoolPanel />,
+            },
+          ]}
+        />
+      </Providers>
+    </RootDocument>
+  );
+}
+```
+
+### Available DevTools Panels
+
+<CardGroup cols={3}>
+  <Card title="TanStack Query" icon="database">
+    Monitor queries, mutations, cache state, and invalidation
+  </Card>
+  
+  <Card title="TanStack Router" icon="route">
+    Inspect routes, params, search params, and navigation state
+  </Card>
+  
+  <Card title="MailDev" icon="envelope">
+    Preview emails sent during development in an embedded iframe
+  </Card>
+</CardGroup>
+
+## TanStack Query DevTools
+
+Monitor and debug React Query state:
+
+### Features
+
+- **Query Inspector**: View all queries, their status, and cached data
+- **Mutation Tracker**: Monitor mutations and their lifecycle
+- **Cache Explorer**: Inspect query cache structure and contents
+- **Query Invalidation**: Manually trigger query refetches
+- **Timeline**: See query execution over time
+
+### Usage
+
+<Steps>
+  <Step title="Open DevTools">
+    Click the TanStack logo in the bottom-right corner of your app
+  </Step>
+  
+  <Step title="Select Query panel">
+    Choose "Tanstack Query" from the tabs
+  </Step>
+  
+  <Step title="Inspect queries">
+    View active queries, their data, and cache state
+  </Step>
+</Steps>
+
+<Info>
+  Query DevTools automatically show query keys, data, error state, fetch status, and last updated time.
+</Info>
+
+## TanStack Router DevTools
+
+Debug routing and navigation:
+
+### Features
+
+- **Route Tree**: Visualize the complete route hierarchy
+- **Active Route**: See currently matched routes and params
+- **Search Params**: Monitor URL search parameters
+- **Route Context**: Inspect route context values
+- **Navigation State**: Track pending navigations and transitions
+
+### Usage
+
+The Router DevTools panel shows:
+- Current route path and matched routes
+- Route parameters (`params`)
+- Search parameters (`search`)
+- Route context data
+- Route loading states
+
+```tsx
+// Example: Viewing route info in DevTools
+// Navigate to /manager/users/123
+// DevTools will show:
+// - Route: /manager/users/$userId
+// - Params: { userId: '123' }
+// - Search: { ... }
+```
+
+## MailDev DevTools Panel
+
+Preview emails during development without sending real emails.
+
+### Custom DevTools Panel
+
+The MailDev panel is a custom implementation:
+
+```tsx src/devtools/maildev.tsx
+import { getUiState } from '@bearstudio/ui-state';
+import { useQuery } from '@tanstack/react-query';
+import { orpc } from '@/lib/orpc/client';
+import { PageError } from '@/components/errors/page-error';
+import { Spinner } from '@/components/ui/spinner';
+
+export function MailDevDevtoolPanel() {
+  const devtoolsQuery = useQuery(orpc.config.devtools.queryOptions());
+
+  const ui = getUiState((set) => {
+    if (devtoolsQuery.status === 'pending') return set('pending');
+    if (devtoolsQuery.status === 'error') return set('error');
+    if (!devtoolsQuery.data.maildevIframeSrc) return set('unavailable');
+    return set('default', {
+      maildevIframeSrc: devtoolsQuery.data.maildevIframeSrc,
+    });
+  });
+
+  return (
+    <div className="flex h-full flex-1 flex-col">
+      {ui
+        .match('pending', () => <Spinner full />)
+        .match('error', () => <PageError type="unknown">{''}</PageError>)
+        .match('unavailable', () => (
+          <PageError
+            type="unknown"
+            errorCode="No URL"
+            title="Unavailable"
+            message="No maildev url available"
+          >
+            {''}
+          </PageError>
+        ))
+        .match('default', (data) => (
+          <iframe
+            title="MailDev"
+            className="h-full w-full"
+            src={data.maildevIframeSrc}
+            sandbox="allow-same-origin allow-scripts"
+          />
+        ))
+        .exhaustive()}
+    </div>
+  );
+}
+```
+
+### Features
+
+- **Email Preview**: View all emails sent during development
+- **Email Details**: Inspect HTML, plain text, and attachments
+- **Embedded UI**: MailDev interface embedded directly in DevTools
+- **No Configuration**: Automatically connects when MailDev is running
+
+<Note>
+  MailDev must be running via Docker for this panel to work. See the Docker setup documentation for more details.
+</Note>
+
+## React DevTools
+
+While TanStack DevTools are built-in, you can also use the standard React DevTools browser extension.
+
+### Installation
+
+<CardGroup cols={2}>
+  <Card title="Chrome" icon="chrome">
+    Install [React Developer Tools](https://chrome.google.com/webstore/detail/react-developer-tools/fmkadmapgofadopljbjfkapdkoienihi) from Chrome Web Store
+  </Card>
+  
+  <Card title="Firefox" icon="firefox">
+    Install [React Developer Tools](https://addons.mozilla.org/en-US/firefox/addon/react-devtools/) from Firefox Add-ons
+  </Card>
+</CardGroup>
+
+### Features
+
+- **Component Tree**: Inspect React component hierarchy
+- **Props Inspector**: View component props and state
+- **Hooks Debugger**: Debug useState, useEffect, and custom hooks
+- **Profiler**: Measure component render performance
+
+## Development Environment Hints
+
+The project includes visual hints for development environment:
+
+```tsx src/routes/__root.tsx
+import { EnvHint } from '@/features/devtools/env-hint';
+
+function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
+  return (
+    <html>
+      <body>
+        {children}
+        <EnvHint />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+```
+
+The `EnvHint` component displays the current environment (development, staging, production) in the UI during development.
+
+## Vite DevTools Plugin
+
+The project uses `@tanstack/devtools-vite` plugin for better integration:
+
+```ts vite.config.ts
+import { devtools } from '@tanstack/devtools-vite';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  plugins: [
+    devtools(),
+    // ... other plugins
+  ],
+});
+```
+
+This plugin:
+- Optimizes DevTools bundle size
+- Enables hot module replacement for DevTools
+- Provides better source maps for debugging
+
+## Development Server
+
+The dev server is configured in `vite.config.ts`:
+
+```ts vite.config.ts
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_');
+  return {
+    server: {
+      port: env.VITE_PORT ? Number(env.VITE_PORT) : 3000,
+      strictPort: true,
+    },
+    // ...
+  };
+});
+```
+
+### Development Commands
+
+```bash
+# Start development server
+pnpm dev
+
+# Start with specific port
+VITE_PORT=3001 pnpm dev
+```
+
+## Browser DevTools Tips
+
+### Network Tab
+
+Monitor API requests:
+- Filter by `Fetch/XHR` to see tRPC/oRPC calls
+- Check request/response payloads
+- Monitor loading times
+
+### Console
+
+The application logs useful debug information:
+```js
+// TanStack Query logs (in development)
+// Router navigation events
+// Error boundaries and fallbacks
+```
+
+### React Components Tab
+
+Inspect Start UI components:
+- Search for components by name
+- View props passed to form components
+- Check context values
+- Monitor state changes
+
+## Production Builds
+
+<Warning>
+  DevTools are automatically excluded from production builds. The TanStack DevTools components tree-shake to ~0KB in production.
+</Warning>
+
+Verify DevTools are excluded:
+
+```bash
+pnpm build
+# DevTools will not be included in the bundle
+```
+
+## Debugging Tips
+
+<CardGroup cols={2}>
+  <Card title="Query Keys" icon="key">
+    Use descriptive query keys for easier debugging in React Query DevTools
+  </Card>
+  
+  <Card title="Route IDs" icon="fingerprint">
+    Check route IDs in Router DevTools to verify route matching
+  </Card>
+  
+  <Card title="Test IDs" icon="hashtag">
+    Add `data-testid` attributes to components for easier debugging and testing
+  </Card>
+  
+  <Card title="Network Tab" icon="network-wired">
+    Monitor API calls in browser DevTools to debug data fetching issues
+  </Card>
+</CardGroup>
+
+## DevTools Configuration
+
+### Disabling Keyboard Shortcuts
+
+By default, the keyboard shortcut is disabled:
+
+```tsx
+<TanStackDevtools
+  config={{
+    openHotkey: [], // Disabled
+  }}
+/>
+```
+
+To enable it:
+
+```tsx
+<TanStackDevtools
+  config={{
+    openHotkey: ['Ctrl', 'Shift', 'D'], // Custom shortcut
+  }}
+/>
+```
+
+### Custom Panel Styling
+
+DevTools panels can be customized:
+
+```tsx
+<TanStackDevtools
+  config={{
+    position: 'bottom-right', // or 'bottom-left', 'top-right', 'top-left'
+    initialIsOpen: false,
+    buttonPosition: 'bottom-right',
+  }}
+/>
+```
+
+## VSCode Integration
+
+For an enhanced development experience, install these VS Code extensions:
+
+- **ES7+ React/Redux/React-Native snippets**: React code snippets
+- **Tailwind CSS IntelliSense**: Tailwind class autocomplete
+- **ESLint**: Real-time linting feedback
+- **Prettier**: Code formatting on save
+- **Error Lens**: Inline error messages
+
+## Storybook
+
+Start UI [web] includes Storybook for component development:
+
+```bash
+# Run Storybook
+pnpm storybook
+
+# Build Storybook
+pnpm storybook:build
+```
+
+Storybook provides:
+- Component isolation
+- Interactive props playground
+- Visual regression testing
+- Component documentation
+
+<Tip>
+  Use Storybook to develop and test UI components in isolation before integrating them into your application.
+</Tip>
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Testing" icon="flask" href="/development/testing">
+    Learn about testing with Vitest
+  </Card>
+  
+  <Card title="E2E Testing" icon="browser" href="/development/e2e-testing">
+    Explore end-to-end testing with Playwright
+  </Card>
+</CardGroup>

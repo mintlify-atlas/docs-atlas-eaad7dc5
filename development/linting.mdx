@@ -1,0 +1,470 @@
+---
+title: Linting & Formatting
+description: Learn about ESLint, TypeScript, Prettier, and git hooks configuration
+---
+
+Start UI [web] includes a comprehensive code quality setup with ESLint, TypeScript type checking, Prettier formatting, and automated git hooks.
+
+## ESLint Configuration
+
+The project uses ESLint with TypeScript and React-specific plugins configured in `eslint.config.ts`:
+
+```ts eslint.config.ts
+import eslint from '@eslint/js';
+import react from '@eslint-react/eslint-plugin';
+import tanstackQuery from '@tanstack/eslint-plugin-query';
+import tanstackRouter from '@tanstack/eslint-plugin-router';
+import { defineConfig } from 'eslint/config';
+import reactHooks from 'eslint-plugin-react-hooks';
+import simpleImportSort from 'eslint-plugin-simple-import-sort';
+import sonarjs from 'eslint-plugin-sonarjs';
+import * as storybook from 'eslint-plugin-storybook';
+import unicorn from 'eslint-plugin-unicorn';
+import tslint from 'typescript-eslint';
+
+export default defineConfig(
+  eslint.configs.recommended,
+  tslint.configs.recommended,
+  sonarjs.configs.recommended,
+  ...storybook.configs['flat/recommended'],
+  ...tanstackRouter.configs['flat/recommended'],
+  ...tanstackQuery.configs['flat/recommended'],
+  react.configs['recommended-typescript'],
+  reactHooks.configs.flat.recommended,
+  {
+    rules: {
+      'sonarjs/todo-tag': 'warn',
+      'sonarjs/no-redundant-jump': 'off',
+      'react/no-unescaped-entities': 'off',
+      'no-unreachable': 'error',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'all',
+          argsIgnorePattern: '^_',
+          caughtErrors: 'all',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+      'sonarjs/cognitive-complexity': ['warn', 50],
+      'sonarjs/prefer-immediate-return': 'warn',
+    },
+  },
+  // ... additional configurations
+);
+```
+
+### ESLint Plugins
+
+The configuration includes specialized plugins:
+
+<CardGroup cols={2}>
+  <Card title="TypeScript ESLint" icon="code">
+    Type-aware linting rules for TypeScript code
+  </Card>
+  
+  <Card title="React ESLint" icon="react">
+    React-specific linting with hooks validation
+  </Card>
+  
+  <Card title="TanStack Query" icon="database">
+    Best practices for React Query usage
+  </Card>
+  
+  <Card title="TanStack Router" icon="route">
+    Route configuration and usage validation
+  </Card>
+  
+  <Card title="SonarJS" icon="bug">
+    Code smell detection and complexity analysis
+  </Card>
+  
+  <Card title="Unicorn" icon="sparkles">
+    Powerful ESLint rules for better code quality
+  </Card>
+</CardGroup>
+
+### Filename Conventions
+
+The unicorn plugin enforces kebab-case naming:
+
+```ts eslint.config.ts
+{
+  plugins: {
+    unicorn,
+  },
+  ignores: ['src/routes/**/*.*', '**/generated/**/*.*'],
+  rules: {
+    'unicorn/filename-case': [
+      'error',
+      {
+        case: 'kebabCase',
+        ignore: ['^routeTree\\.gen\\.ts$'],
+      },
+    ],
+  },
+}
+```
+
+<Note>
+  All files must use kebab-case naming (e.g., `my-component.tsx`), except for generated route files.
+</Note>
+
+### Environment Variable Protection
+
+ESLint enforces safe environment variable usage:
+
+```ts eslint.config.ts
+{
+  files: ['src/**/*'],
+  rules: {
+    'no-process-env': 'error',
+    'no-restricted-syntax': [
+      'error',
+      {
+        selector:
+          "MemberExpression[object.type='MemberExpression'][object.object.type='MetaProperty'][object.object.property.name='meta'][object.property.name='env'][property.name!=/^(DEV|PROD|MODE|SSR|BASE_URL|MANIFEST)$/]",
+        message:
+          'Custom import.meta.env variables are not allowed. Use envClient and envServer from @/env/client and @/env/server folder instead.',
+      },
+    ],
+  },
+}
+```
+
+<Warning>
+  Direct access to `process.env` and custom `import.meta.env` variables is forbidden. Use the typed environment variables from `@/env/client` and `@/env/server` instead.
+</Warning>
+
+### Import Sorting
+
+The `simple-import-sort` plugin enforces consistent import ordering:
+
+```ts eslint.config.ts
+{
+  plugins: {
+    'simple-import-sort': simpleImportSort,
+  },
+  rules: {
+    'simple-import-sort/exports': 'warn',
+    'simple-import-sort/imports': [
+      'warn',
+      {
+        groups: [
+          // ext library & side effect imports
+          ['^@?\\w', '^\\u0000'],
+          // {s}css files
+          ['^.+\\.s?css$'],
+          // Lib and hooks
+          ['^@/lib', '^@/hooks'],
+          // static data
+          ['^@/data'],
+          // components
+          ['^@/components', '^@/container'],
+          // zustand store
+          ['^@/store'],
+          // Other imports
+          ['^@/'],
+          // relative paths up until 3 level
+          [
+            '^\\./?$',
+            '^\\.(?!/?$)',
+            '^\\.\\./\\?$',
+            '^\\.\\.\\.(?!/?$)',
+            '^\\.\\./\\.\\./\\?$',
+            '^\\.\\./\\.\\.\\.(?!/?$)',
+            '^\\.\\./\\.\\./\\.\\./\\?$',
+            '^\\.\\./\\.\\./\\.\\.\\.(?!/?$)',
+          ],
+          ['^@/types'],
+          // other that didnt fit in
+          ['^'],
+        ],
+      },
+    ],
+  },
+}
+```
+
+Import order:
+1. External libraries and side effects
+2. CSS files
+3. Library utilities and hooks
+4. Static data
+5. Components
+6. Zustand stores
+7. Other absolute imports
+8. Relative imports
+9. Type imports
+
+## TypeScript Type Checking
+
+TypeScript is configured with strict type checking in `tsconfig.json`:
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "target": "ES2022",
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitAny": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "typeRoots": ["node_modules/@types", "src/types"]
+  }
+}
+```
+
+### Type Checking Features
+
+<CardGroup cols={2}>
+  <Card title="Strict Null Checks" icon="shield-check">
+    Enforces proper handling of `null` and `undefined` values
+  </Card>
+  
+  <Card title="No Implicit Any" icon="circle-exclamation">
+    Prevents accidental use of `any` type without explicit annotation
+  </Card>
+  
+  <Card title="Unchecked Index Access" icon="brackets-square">
+    Array and object access returns potentially undefined values
+  </Card>
+  
+  <Card title="Path Aliases" icon="at">
+    Use `@/` prefix to import from `src/` directory
+  </Card>
+</CardGroup>
+
+## Prettier Configuration
+
+Prettier handles code formatting with the following configuration:
+
+```js .prettierrc.cjs
+const config = {
+  plugins: ['prettier-plugin-tailwindcss'],
+  endOfLine: 'lf',
+  semi: true,
+  singleQuote: true,
+  tabWidth: 2,
+  trailingComma: 'es5',
+  arrowParens: 'always',
+  tailwindStylesheet: './src/styles/app.css',
+  tailwindFunctions: ['cn', 'cva'],
+};
+
+module.exports = config;
+```
+
+### Prettier Features
+
+- **Tailwind CSS sorting**: Automatically sorts Tailwind classes
+- **Single quotes**: Uses single quotes for strings
+- **Semicolons**: Includes semicolons
+- **2-space indentation**: Consistent spacing
+- **ES5 trailing commas**: For better git diffs
+
+<Info>
+  The `prettier-plugin-tailwindcss` plugin automatically sorts Tailwind CSS classes in `className` attributes, `cn()`, and `cva()` functions.
+</Info>
+
+## Git Hooks with Lefthook
+
+[Lefthook](https://github.com/evilmartians/lefthook) manages git hooks for automated quality checks:
+
+```yaml lefthook.yml
+pre-commit:
+  commands:
+    check:
+      glob: '*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc}'
+      run: pnpm prettier --write {staged_files}
+      stage_fixed: true
+
+pre-push:
+  commands:
+    check:
+      run: pnpm lint
+```
+
+### Git Hook Workflow
+
+<Steps>
+  <Step title="Pre-commit: Format">
+    Automatically formats staged files with Prettier before commit
+  </Step>
+  
+  <Step title="Pre-commit: Stage fixes">
+    Re-stages files that were formatted
+  </Step>
+  
+  <Step title="Pre-push: Lint">
+    Runs ESLint and TypeScript checks before pushing to remote
+  </Step>
+</Steps>
+
+<Note>
+  Lefthook is installed automatically via the `prepare` script when you run `pnpm install`.
+</Note>
+
+## Running Linting Commands
+
+### Lint Everything
+
+```bash
+pnpm lint
+```
+
+Runs both ESLint and TypeScript type checking in parallel.
+
+### ESLint Only
+
+```bash
+pnpm lint:eslint
+```
+
+Lints and auto-fixes JavaScript/TypeScript files.
+
+### TypeScript Only
+
+```bash
+pnpm lint:ts
+```
+
+Runs TypeScript compiler in check mode without emitting files.
+
+### Format with Prettier
+
+```bash
+pnpm pretty
+```
+
+Formats all files in the project.
+
+## Available Scripts
+
+From `package.json`:
+
+```json package.json
+{
+  "scripts": {
+    "prepare": "pnpm lefthook install",
+    "pretty": "prettier -w .",
+    "lint": "run-p lint:*",
+    "lint:eslint": "eslint ./src --fix",
+    "lint:ts": "tsc --noEmit"
+  }
+}
+```
+
+<Tip>
+  The `lint` script uses `run-p` (npm-run-all) to run ESLint and TypeScript checks in parallel for faster execution.
+</Tip>
+
+## CI/CD Integration
+
+In continuous integration environments, run:
+
+```bash
+# Type check
+pnpm lint:ts
+
+# Lint without auto-fix
+eslint ./src
+
+# Check formatting
+prettier --check .
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Fix on Save" icon="floppy-disk">
+    Configure your editor to run ESLint and Prettier on save for immediate feedback.
+  </Card>
+  
+  <Card title="Commit Often" icon="code-commit">
+    Lefthook ensures code quality on every commit, so commit frequently.
+  </Card>
+  
+  <Card title="Use Typed Env" icon="shield">
+    Always import environment variables from `@/env/client` or `@/env/server`.
+  </Card>
+  
+  <Card title="Follow Naming" icon="file-signature">
+    Use kebab-case for file names to comply with ESLint rules.
+  </Card>
+</CardGroup>
+
+## Editor Integration
+
+### VS Code
+
+Add to `.vscode/settings.json`:
+
+```json
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ]
+}
+```
+
+### WebStorm / IntelliJ
+
+1. Enable ESLint in **Settings → Languages & Frameworks → JavaScript → Code Quality Tools → ESLint**
+2. Enable Prettier in **Settings → Languages & Frameworks → JavaScript → Prettier**
+3. Check "Run on save for files"
+
+## Troubleshooting
+
+<Warning>
+  If Lefthook hooks are not running, reinstall them with:
+  ```bash
+  pnpm lefthook install
+  ```
+</Warning>
+
+### ESLint Cache Issues
+
+Clear ESLint cache if you encounter persistent errors:
+
+```bash
+rm -rf .eslintcache
+pnpm lint:eslint
+```
+
+### TypeScript Performance
+
+For faster type checking, use project references or run:
+
+```bash
+tsc --noEmit --incremental
+```
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Testing" icon="flask" href="/development/testing">
+    Learn about unit and browser testing
+  </Card>
+  
+  <Card title="Dev Tools" icon="wrench" href="/development/dev-tools">
+    Explore development tools and debugging
+  </Card>
+</CardGroup>

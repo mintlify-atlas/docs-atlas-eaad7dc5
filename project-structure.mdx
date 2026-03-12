@@ -1,0 +1,504 @@
+---
+title: Project Structure
+description: Understanding the organization and architecture of Start UI [web]
+---
+
+# Project Structure
+
+Start UI [web] follows a feature-based architecture that promotes modularity, scalability, and maintainability. This guide explains how the codebase is organized and where to find different types of files.
+
+## Directory Overview
+
+Here's a high-level view of the project structure:
+
+```
+start-ui-web/
+├── .github/              # GitHub workflows and templates
+├── .storybook/           # Storybook configuration
+├── .vscode/              # VS Code settings and extensions
+├── .zed/                 # Zed editor settings
+├── e2e/                  # End-to-end tests with Playwright
+├── prisma/               # Database schema and seeds
+├── public/               # Static assets
+├── src/                  # Application source code
+│   ├── components/       # Shared UI components
+│   ├── devtools/         # Development tools
+│   ├── emails/           # Email templates
+│   ├── env/              # Environment validation
+│   ├── features/         # Feature modules
+│   ├── hooks/            # Custom React hooks
+│   ├── layout/           # Layout components
+│   ├── lib/              # Library configurations
+│   ├── locales/          # Internationalization files
+│   ├── routes/           # TanStack Start routes
+│   ├── server/           # Server-side code
+│   ├── styles/           # Global styles
+│   ├── tests/            # Test utilities
+│   └── types/            # TypeScript type definitions
+├── docker-compose.yml    # Docker services configuration
+├── package.json          # Dependencies and scripts
+├── tsconfig.json         # TypeScript configuration
+└── vite.config.ts        # Vite build configuration
+```
+
+## Root Directory
+
+The root directory contains configuration files and development tools:
+
+<AccordionGroup>
+  <Accordion title="Configuration Files">
+    - **`.env.example`** - Template for environment variables
+    - **`docker-compose.yml`** - Docker services (PostgreSQL, MinIO, Maildev)
+    - **`vite.config.ts`** - Vite bundler configuration with TanStack Start
+    - **`tsconfig.json`** - TypeScript compiler options and path aliases
+    - **`eslint.config.ts`** - ESLint rules and plugins
+    - **`.prettierrc.cjs`** - Prettier formatting rules
+    - **`postcss.config.mjs`** - PostCSS configuration for Tailwind
+    - **`tailwind.config.js`** - Tailwind CSS configuration (if present)
+  </Accordion>
+
+  <Accordion title="Testing Configuration">
+    - **`vitest.config.ts`** - Vitest unit test configuration
+    - **`playwright.config.ts`** - Playwright E2E test configuration
+  </Accordion>
+
+  <Accordion title="Development Tools">
+    - **`lefthook.yml`** - Git hooks configuration for pre-commit checks
+    - **`run-jiti.js`** - Runtime TypeScript execution utility
+    - **`components.json`** - shadcn/ui component configuration
+  </Accordion>
+</AccordionGroup>
+
+## Source Directory (`src/`)
+
+The `src` directory contains all application code, organized by purpose:
+
+### Components (`src/components/`)
+
+Shared, reusable UI components used across the application:
+
+```
+components/
+├── brand/         # Branding components (logo, etc.)
+├── errors/        # Error boundary and error display components
+├── form/          # Form field components (input, select, etc.)
+├── icons/         # Custom icon components
+│   ├── generated/       # Auto-generated from SVG sources
+│   └── svg-sources/     # Source SVG files
+├── ui/            # shadcn/ui components (button, card, dialog, etc.)
+└── upload/        # File upload components
+```
+
+<Info>
+  Components in `src/components/ui/` are from [shadcn/ui](https://ui.shadcn.com/) and can be customized. Custom icons are generated from SVG files using the `pnpm gen:icons` command.
+</Info>
+
+### Features (`src/features/`)
+
+Feature-based modules containing domain-specific logic, components, and API routes. This is the heart of the application architecture:
+
+```
+features/
+├── account/       # User account management and profile
+├── auth/          # Authentication flows and components
+├── book/          # Book CRUD operations (example feature)
+├── build-info/    # Build metadata generation
+├── dashboard/     # Dashboard page and widgets
+├── demo/          # Demo mode utilities
+├── devtools/      # Development tools and utilities
+├── genre/         # Genre management (example feature)
+├── home/          # Home page
+└── user/          # User management (admin)
+```
+
+Each feature module typically contains:
+
+- **Components** - Feature-specific React components
+- **API Routes** - Server-side API handlers (oRPC routers)
+- **Types** - TypeScript types and Zod schemas
+- **Utilities** - Helper functions and business logic
+- **Hooks** - Custom React hooks for the feature
+
+<Tip>
+  When building new features, create a new directory in `src/features/` and follow the existing patterns. This keeps related code together and makes it easier to maintain.
+</Tip>
+
+#### Feature Example: Authentication (`src/features/auth/`)
+
+```
+auth/
+├── client.ts                   # Better Auth client configuration
+├── config.ts                   # Better Auth server configuration
+├── confirm-signout.tsx         # Logout confirmation dialog
+├── guard-authenticated.tsx     # Route guard for authenticated users
+├── guard-public-only.tsx       # Route guard for public pages
+├── layout-login.tsx            # Login page layout
+├── page-login.tsx              # Login page component
+├── page-login-verify.tsx       # Email verification page
+└── page-login-error.tsx        # Login error handling
+```
+
+#### Feature Example: Books (`src/features/book/`)
+
+A full CRUD example demonstrating the architecture:
+
+```
+book/
+├── api/
+│   └── router.ts              # oRPC API routes for books
+├── schemas/
+│   └── book.ts                # Zod validation schemas
+├── page-book-list.tsx         # Book list page
+├── page-book-create.tsx       # Book creation page
+├── page-book-update.tsx       # Book edit page
+└── components/
+    └── book-form.tsx          # Shared book form component
+```
+
+### Routes (`src/routes/`)
+
+TanStack Start file-based routing structure:
+
+```
+routes/
+├── __root.tsx               # Root layout with providers
+├── index.tsx                # Home page route
+├── login/                   # Public login routes
+├── logout.tsx               # Logout handler
+├── app/                     # Authenticated app routes
+│   ├── __layout.tsx         # App layout with navigation
+│   ├── dashboard/           # Dashboard routes
+│   └── account/             # Account settings routes
+├── manager/                 # Admin routes
+│   ├── __layout.tsx         # Manager layout
+│   └── users/               # User management routes
+└── api/                     # API routes
+    ├── auth.$.ts            # Better Auth handler
+    ├── dev/                 # Development endpoints
+    ├── upload.$.ts          # File upload handler
+    └── openapi/             # OpenAPI documentation
+```
+
+<Note>
+  TanStack Start uses file-based routing where:
+  - `__root.tsx` is the root layout
+  - `__layout.tsx` creates nested layouts
+  - `index.tsx` is the index route for a directory
+  - `$.ts` creates catch-all routes
+</Note>
+
+### Server (`src/server/`)
+
+Server-side code including database, API routers, and utilities:
+
+```
+server/
+├── db/
+│   ├── generated/           # Prisma Client (auto-generated)
+│   ├── client.ts            # Database client singleton
+│   └── seed.ts              # Database seed utilities
+├── routers/
+│   ├── index.ts             # Root oRPC router
+│   └── [feature]/           # Feature-specific routers
+└── upload/
+    └── config.ts            # File upload configuration
+```
+
+<Info>
+  API routers use [oRPC](https://orpc.unnoq.com/) for type-safe client-server communication. Each feature defines its own router that's merged into the main router.
+</Info>
+
+### Library Configurations (`src/lib/`)
+
+Configurations and utilities for external libraries:
+
+```
+lib/
+├── dayjs/                   # Day.js configuration and plugins
+├── i18n/                    # i18next configuration
+├── orpc/                    # oRPC client setup
+├── tailwind/                # Tailwind utility functions
+├── tanstack-query/          # React Query configuration
+└── zod/                     # Zod validation utilities
+```
+
+### Locales (`src/locales/`)
+
+Internationalization (i18n) translation files:
+
+```
+locales/
+├── ar/                      # Arabic translations
+├── en/                      # English translations (default)
+├── fr/                      # French translations
+└── sw/                      # Swahili translations
+```
+
+Each language directory contains translation JSON files organized by feature or page.
+
+### Emails (`src/emails/`)
+
+Transactional email templates built with [React Email](https://react.email/):
+
+```
+emails/
+├── components/              # Reusable email components
+└── templates/               # Email templates
+    ├── login-code.tsx       # Magic link / OTP email
+    └── ...
+```
+
+<Tip>
+  Preview email templates during development at:
+  
+  `http://localhost:3000/api/dev/email/{template-name}`
+  
+  For example: `http://localhost:3000/api/dev/email/login-code`
+</Tip>
+
+### Other Directories
+
+<AccordionGroup>
+  <Accordion title="Hooks (src/hooks/)">
+    Custom React hooks used across the application:
+    
+    - Shared business logic
+    - State management hooks
+    - Custom UI behavior hooks
+    
+    For feature-specific hooks, keep them in the feature directory.
+  </Accordion>
+
+  <Accordion title="Layout (src/layout/)">
+    Layout components and shells:
+    
+    ```
+    layout/
+    ├── app/                  # Main app layout (for authenticated users)
+    └── manager/              # Admin layout (for admin users)
+    ```
+    
+    Each layout typically includes navigation, headers, and common UI elements.
+  </Accordion>
+
+  <Accordion title="Styles (src/styles/)">
+    Global styles and CSS:
+    
+    - Tailwind CSS directives
+    - Global CSS resets
+    - Custom CSS utilities
+  </Accordion>
+
+  <Accordion title="Types (src/types/)">
+    Global TypeScript type definitions:
+    
+    - Shared interfaces and types
+    - Module augmentations
+    - Third-party library type extensions
+  </Accordion>
+
+  <Accordion title="Tests (src/tests/)">
+    Test utilities and helpers:
+    
+    - Test setup files
+    - Mock factories
+    - Testing utilities
+    
+    Individual test files are co-located with their source files.
+  </Accordion>
+
+  <Accordion title="Environment (src/env/)">
+    Environment variable validation using [@t3-oss/env-core](https://env.t3.gg/):
+    
+    ```
+    env/
+    ├── client.ts             # Client-side env validation
+    └── server.ts             # Server-side env validation
+    ```
+    
+    Ensures type-safe access to environment variables with runtime validation.
+  </Accordion>
+</AccordionGroup>
+
+## Database (`prisma/`)
+
+Prisma ORM configuration and database utilities:
+
+```
+prisma/
+├── schema.prisma            # Database schema definition
+└── seed/
+    ├── index.ts             # Main seed script
+    └── data/                # Seed data files
+```
+
+The `schema.prisma` file defines:
+- Database models (User, Session, Book, etc.)
+- Relations between models
+- Indexes and constraints
+- Enums (e.g., `UserRole`)
+
+<Info>
+  After modifying `schema.prisma`, run:
+  - `pnpm db:push` - Push schema changes to the database
+  - `pnpm gen:prisma` - Regenerate the Prisma Client
+</Info>
+
+## End-to-End Tests (`e2e/`)
+
+Playwright E2E tests organized by feature:
+
+```
+e2e/
+├── auth/                    # Authentication flow tests
+├── account/                 # Account management tests
+├── fixtures/                # Test fixtures and utilities
+└── setup/                   # Test setup and configuration
+```
+
+Tests use Playwright's test runner and can be run with `pnpm e2e` or `pnpm e2e:ui`.
+
+## Public Assets (`public/`)
+
+Static files served directly by the web server:
+
+```
+public/
+├── favicon.ico              # Browser favicon
+├── favicon.svg              # SVG favicon
+├── apple-touch-icon.png     # iOS home screen icon
+├── web-app-manifest-*.png   # PWA icons
+├── site.webmanifest         # Web app manifest
+└── avatar.jpg               # Default user avatar
+```
+
+Files in `public/` are served at the root URL. For example, `public/favicon.ico` is available at `/favicon.ico`.
+
+## Key Files
+
+### Application Entry Points
+
+- **`src/routes/__root.tsx`** - Root route with providers (React Query, themes, etc.)
+- **`src/router.tsx`** - TanStack Router configuration
+- **`src/providers.tsx`** - Application-wide providers
+
+### Build Configuration
+
+- **`vite.config.ts`** - Vite configuration with TanStack Start and Nitro
+- **`tsconfig.json`** - TypeScript configuration with path aliases:
+  ```json
+  {
+    "compilerOptions": {
+      "paths": {
+        "@/*": ["./src/*"]
+      }
+    }
+  }
+  ```
+
+### Package Management
+
+- **`package.json`** - Dependencies, scripts, and project metadata
+- **`pnpm-lock.yaml`** - Locked dependency versions
+- **`.npmrc`** - pnpm configuration
+
+## File Naming Conventions
+
+Start UI [web] follows these naming conventions:
+
+<CardGroup cols={2}>
+  <Card title="Components" icon="react">
+    - PascalCase for component files: `UserProfile.tsx`
+    - kebab-case with prefixes: `page-login.tsx`, `layout-app.tsx`
+  </Card>
+  
+  <Card title="Utilities" icon="code">
+    - kebab-case: `format-date.ts`
+    - Descriptive names: `use-user-session.ts` (hooks)
+  </Card>
+  
+  <Card title="Types" icon="brackets-curly">
+    - `.ts` extension for type-only files
+    - Match the component/module name
+  </Card>
+  
+  <Card title="Tests" icon="flask">
+    - Co-located: `button.test.tsx`
+    - E2E tests: `auth.spec.ts`
+  </Card>
+</CardGroup>
+
+## Import Aliases
+
+The project uses TypeScript path aliases for cleaner imports:
+
+```typescript
+// Instead of:
+import { Button } from '../../../components/ui/button';
+
+// Use:
+import { Button } from '@/components/ui/button';
+```
+
+Common aliases:
+- `@/components/*` - UI components
+- `@/features/*` - Feature modules
+- `@/lib/*` - Library configurations
+- `@/server/*` - Server-side code
+
+## Best Practices
+
+<Steps>
+  <Step title="Keep features self-contained">
+    Each feature should contain all its related code: components, API routes, types, and utilities. This makes features easier to maintain, test, and potentially extract.
+  </Step>
+
+  <Step title="Co-locate tests">
+    Place test files next to the code they test:
+    
+    ```
+    button.tsx
+    button.test.tsx
+    ```
+  </Step>
+
+  <Step title="Use TypeScript strictly">
+    Leverage TypeScript's type system:
+    - Define types in separate files when shared
+    - Use Zod for runtime validation
+    - Avoid `any` types
+  </Step>
+
+  <Step title="Follow naming conventions">
+    - Components: PascalCase
+    - Utilities: kebab-case
+    - Types: PascalCase
+    - Files: descriptive and consistent
+  </Step>
+
+  <Step title="Leverage path aliases">
+    Use `@/` imports to avoid relative path hell and make refactoring easier.
+  </Step>
+</Steps>
+
+## Next Steps
+
+Now that you understand the project structure:
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/features/authentication">
+    Learn how authentication works in Start UI [web]
+  </Card>
+  
+  <Card title="Database" icon="database" href="/features/database">
+    Work with Prisma and manage your database
+  </Card>
+  
+  <Card title="API Routes" icon="route" href="/api/overview">
+    Create type-safe API endpoints with oRPC
+  </Card>
+  
+  <Card title="Components" icon="palette" href="/components/overview">
+    Build UI with shadcn/ui and custom components
+  </Card>
+</CardGroup>

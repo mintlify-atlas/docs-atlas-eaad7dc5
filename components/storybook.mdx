@@ -1,0 +1,480 @@
+---
+title: 'Storybook'
+description: 'Develop, test, and document components in isolation with Storybook'
+icon: 'book'
+---
+
+Start UI [web] includes Storybook for developing and testing UI components in isolation. All components in `src/components/ui/` have corresponding story files.
+
+## Getting Started
+
+Start the Storybook development server:
+
+```bash
+pnpm storybook
+```
+
+Storybook will open at `http://localhost:6006`.
+
+<Info>
+Storybook runs independently from your main application, allowing you to develop components without running the full app.
+</Info>
+
+## Storybook Configuration
+
+Storybook is configured in `.storybook/main.ts`:
+
+```typescript
+import type { StorybookConfig } from '@storybook/react-vite';
+
+const config: StorybookConfig = {
+  stories: ['../**/*.stories.@(js|jsx|mjs|ts|tsx)'],
+  addons: [
+    '@vueless/storybook-dark-mode',
+    '@storybook/addon-a11y',
+    '@storybook/addon-docs',
+  ],
+  framework: {
+    name: '@storybook/react-vite',
+    options: {
+      builder: {
+        viteConfigPath: './vite.storybook.ts',
+      },
+    },
+  },
+};
+export default config;
+```
+
+### Features
+
+<CardGroup cols={2}>
+  <Card title="Dark Mode" icon="moon">
+    Toggle between light and dark themes with `@vueless/storybook-dark-mode`
+  </Card>
+  <Card title="Accessibility Testing" icon="universal-access">
+    Check WCAG compliance with `@storybook/addon-a11y`
+  </Card>
+  <Card title="Auto Documentation" icon="file-lines">
+    Auto-generated docs with `@storybook/addon-docs`
+  </Card>
+  <Card title="Vite Integration" icon="bolt">
+    Fast HMR with `@storybook/react-vite`
+  </Card>
+</CardGroup>
+
+## Preview Configuration
+
+The preview setup in `.storybook/preview.tsx` wraps stories with necessary providers:
+
+```tsx
+import type { Preview } from '@storybook/react-vite';
+import { useDarkMode } from '@vueless/storybook-dark-mode';
+import { StrictMode } from 'react';
+
+import '@/styles/app.css';
+import { Providers } from '../src/providers';
+
+const preview: Preview = {
+  parameters: {
+    layout: 'padded',
+    backgrounds: { disable: true },
+    darkMode: { stylePreview: true },
+  },
+  decorators: [
+    (story, context) => {
+      const isDarkMode = useDarkMode();
+      return (
+        <Providers forcedTheme={isDarkMode ? 'dark' : 'light'}>
+          <StrictMode>
+            {story(context)}
+          </StrictMode>
+        </Providers>
+      );
+    },
+  ],
+};
+
+export default preview;
+```
+
+<Note>
+The `Providers` wrapper ensures stories have access to theme context, i18n, and other global providers.
+</Note>
+
+## Writing Stories
+
+### Basic Story Structure
+
+Create a story file next to your component:
+
+```tsx
+// src/components/ui/button.stories.tsx
+import type { Meta } from '@storybook/react-vite';
+import { MailIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
+export default {
+  title: 'Button',
+} satisfies Meta<typeof Button>;
+
+export const Default = () => {
+  return <Button>Default</Button>;
+};
+
+export const Variants = () => {
+  return (
+    <div className="flex gap-4">
+      <Button>Default</Button>
+      <Button variant="secondary">Secondary</Button>
+      <Button variant="destructive">Destructive</Button>
+      <Button variant="ghost">Ghost</Button>
+      <Button variant="link">Link</Button>
+    </div>
+  );
+};
+
+export const Sizes = () => {
+  return (
+    <div className="flex gap-4">
+      <Button size="xs">Extra Small</Button>
+      <Button size="sm">Small</Button>
+      <Button>Default</Button>
+      <Button size="lg">Large</Button>
+    </div>
+  );
+};
+```
+
+### Story Naming
+
+Stories are organized by title and export name:
+
+```tsx
+export default {
+  title: 'Form/Button',  // Creates "Form" → "Button" navigation
+} satisfies Meta<typeof Button>;
+
+// Story names come from export names
+export const Default = () => <Button>Click me</Button>;
+export const WithIcon = () => <Button><MailIcon />Send</Button>;
+export const Loading = () => <Button loading>Loading</Button>;
+```
+
+## Story Examples
+
+### Button Stories
+
+```tsx
+import type { Meta } from '@storybook/react-vite';
+import { MailIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
+export default {
+  title: 'Button',
+} satisfies Meta<typeof Button>;
+
+export const IconOnly = () => {
+  return (
+    <div className="flex gap-4">
+      <Button size="icon-xs"><MailIcon /></Button>
+      <Button size="icon-sm"><MailIcon /></Button>
+      <Button size="icon"><MailIcon /></Button>
+      <Button size="icon-lg"><MailIcon /></Button>
+    </div>
+  );
+};
+
+export const WithIcon = () => {
+  return (
+    <div className="flex gap-4">
+      <Button>
+        <MailIcon />Button
+      </Button>
+      <Button>
+        Button<MailIcon />
+      </Button>
+    </div>
+  );
+};
+
+export const Loading = () => {
+  return (
+    <div className="flex gap-4">
+      <Button loading>Button</Button>
+      <Button size="icon" loading><MailIcon /></Button>
+      <Button loading><MailIcon />Button</Button>
+    </div>
+  );
+};
+
+export const Disabled = () => {
+  return (
+    <div className="flex gap-4">
+      <Button disabled>Default</Button>
+      <Button disabled variant="secondary">Secondary</Button>
+      <Button disabled variant="destructive">Destructive</Button>
+    </div>
+  );
+};
+```
+
+### Form Stories
+
+```tsx
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Meta } from '@storybook/react-vite';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zu } from '@/lib/zod/zod-utils';
+import {
+  Form,
+  FormField,
+  FormFieldController,
+  FormFieldLabel,
+  FormFieldHelper,
+} from '@/components/form';
+import { Button } from '@/components/ui/button';
+
+export default {
+  title: 'Form/Form',
+} satisfies Meta<typeof Form>;
+
+const schema = z.object({
+  name: zu.fieldText.required(),
+});
+
+export const Default = () => {
+  const form = useForm({
+    mode: 'onBlur',
+    resolver: zodResolver(schema),
+    defaultValues: { name: '' },
+  });
+
+  return (
+    <Form {...form} onSubmit={(values) => console.log(values)}>
+      <div className="flex flex-col gap-4">
+        <FormField>
+          <FormFieldLabel>Name</FormFieldLabel>
+          <FormFieldController
+            control={form.control}
+            type="text"
+            name="name"
+          />
+          <FormFieldHelper>Enter your full name</FormFieldHelper>
+        </FormField>
+        <Button type="submit">Submit</Button>
+      </div>
+    </Form>
+  );
+};
+```
+
+## Interactive Controls
+
+Use args for interactive component testing:
+
+```tsx
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { Button } from '@/components/ui/button';
+
+const meta = {
+  title: 'Button',
+  component: Button,
+  argTypes: {
+    variant: {
+      control: 'select',
+      options: ['default', 'secondary', 'ghost', 'destructive', 'link'],
+    },
+    size: {
+      control: 'select',
+      options: ['xs', 'sm', 'default', 'lg'],
+    },
+    loading: {
+      control: 'boolean',
+    },
+    disabled: {
+      control: 'boolean',
+    },
+  },
+} satisfies Meta<typeof Button>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Playground: Story = {
+  args: {
+    children: 'Button',
+    variant: 'default',
+    size: 'default',
+    loading: false,
+    disabled: false,
+  },
+};
+```
+
+## Story Organization
+
+Stories are organized throughout the codebase:
+
+```
+src/
+├── components/
+│   ├── ui/
+│   │   ├── button.tsx
+│   │   ├── button.stories.tsx          # Component stories
+│   │   ├── input.tsx
+│   │   ├── input.stories.tsx
+│   │   └── ...
+│   ├── form/
+│   │   ├── docs.stories.tsx            # Form documentation stories
+│   │   ├── field-text/
+│   │   │   └── docs.stories.tsx        # Field-specific stories
+│   │   └── ...
+│   ├── brand/
+│   │   ├── logo.tsx
+│   │   └── logo.stories.tsx
+│   └── errors/
+│       ├── page-error.tsx
+│       └── page-error.stories.tsx
+```
+
+## Development Workflow
+
+<Steps>
+  <Step title="Start Storybook">
+    Run `pnpm storybook` to start the development server.
+  </Step>
+  <Step title="Develop Component">
+    Edit your component file and see changes instantly with HMR.
+  </Step>
+  <Step title="Write Stories">
+    Create stories for different component states and variants.
+  </Step>
+  <Step title="Test Accessibility">
+    Use the A11y addon to check for accessibility issues.
+  </Step>
+  <Step title="Test Dark Mode">
+    Toggle dark mode to ensure your component works in both themes.
+  </Step>
+  <Step title="Document">
+    Add descriptions and notes to help others understand component usage.
+  </Step>
+</Steps>
+
+## Building Storybook
+
+Build a static version of Storybook:
+
+```bash
+pnpm storybook:build
+```
+
+This creates a static site in `public/storybook/` that can be deployed.
+
+<Note>
+The build command automatically moves the output to `public/storybook/` so it can be served alongside your application.
+</Note>
+
+## Best Practices
+
+<Steps>
+  <Step title="Create Multiple Stories">
+    Show different states, variants, and use cases:
+    ```tsx
+    export const Default = () => <Component />;
+    export const WithProps = () => <Component prop="value" />;
+    export const LoadingState = () => <Component loading />;
+    export const ErrorState = () => <Component error="Error message" />;
+    ```
+  </Step>
+  <Step title="Use Real Data">
+    Use realistic data that represents actual usage:
+    ```tsx
+    const sampleData = {
+      name: 'John Doe',
+      email: 'john@example.com',
+      role: 'Admin',
+    };
+    ```
+  </Step>
+  <Step title="Show Variations">
+    Display multiple variants side-by-side:
+    ```tsx
+    export const AllVariants = () => (
+      <div className="flex gap-4">
+        <Component variant="primary" />
+        <Component variant="secondary" />
+        <Component variant="tertiary" />
+      </div>
+    );
+    ```
+  </Step>
+  <Step title="Test Edge Cases">
+    Include stories for edge cases:
+    ```tsx
+    export const LongText = () => (
+      <Component>Very long text that might wrap or overflow</Component>
+    );
+    export const EmptyState = () => <Component />;
+    ```
+  </Step>
+  <Step title="Document Props">
+    Use JSDoc comments on component props for auto-documentation:
+    ```tsx
+    type ButtonProps = {
+      /** Button variant style */
+      variant?: 'default' | 'secondary';
+      /** Size of the button */
+      size?: 'sm' | 'md' | 'lg';
+    };
+    ```
+  </Step>
+</Steps>
+
+## Internationalization in Stories
+
+The preview includes i18n support with a locale switcher:
+
+```tsx
+export const Localized = () => {
+  const { t } = useTranslation('common');
+  return <Button>{t('common:actions.save')}</Button>;
+};
+```
+
+Use the locale dropdown in Storybook's toolbar to test translations.
+
+## Troubleshooting
+
+<Accordion title="Stories not showing up">
+Ensure your story file:
+- Ends with `.stories.tsx` or `.stories.ts`
+- Has a default export with `Meta` type
+- Has at least one exported story function
+</Accordion>
+
+<Accordion title="Styles not applying">
+Check that:
+- `@/styles/app.css` is imported in `.storybook/preview.tsx`
+- Your component uses the `cn()` utility for className merging
+- Dark mode styles use the `dark:` prefix
+</Accordion>
+
+<Accordion title="Component errors">
+Verify:
+- All providers are included in `.storybook/preview.tsx`
+- Your component doesn't depend on routing context
+- Environment variables are available in Storybook
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Component Overview" icon="puzzle-piece" href="/components/overview">
+    Explore all available components
+  </Card>
+  <Card title="Styling Guide" icon="paintbrush" href="/components/styling">
+    Learn styling patterns and techniques
+  </Card>
+</CardGroup>

@@ -1,0 +1,282 @@
+---
+title: 'Component Overview'
+description: 'Explore the comprehensive UI component library built on shadcn/ui with Base UI primitives'
+icon: 'puzzle-piece'
+---
+
+Start UI [web] includes a rich collection of pre-built, accessible React components built on top of [shadcn/ui](https://ui.shadcn.com/) and [Base UI](https://base-ui.mui.com/react/). All components are fully typed with TypeScript and styled with Tailwind CSS.
+
+## Component Library
+
+The component library is located in `src/components/ui/` and includes:
+
+<CardGroup cols={2}>
+  <Card title="Form Components" icon="input-text">
+    Input, Textarea, Select, Checkbox, Radio Group, Date Picker, OTP Input, Combobox
+  </Card>
+  <Card title="Layout Components" icon="layout">
+    Card, Sidebar, Sheet, Drawer, Responsive Drawer, Separator
+  </Card>
+  <Card title="Navigation Components" icon="compass">
+    Breadcrumb, Dropdown Menu, Popover, Sidebar
+  </Card>
+  <Card title="Feedback Components" icon="bell">
+    Alert, Badge, Skeleton, Spinner, Sonner (Toast)
+  </Card>
+  <Card title="Overlay Components" icon="window">
+    Dialog, Drawer, Sheet, Responsive Drawer, Confirm Dialog
+  </Card>
+  <Card title="Data Display" icon="table">
+    Avatar, Badge, Calendar, Scroll Area, Tooltip
+  </Card>
+  <Card title="Interactive Components" icon="hand-pointer">
+    Button, Button Link, Responsive Icon Button, Theme Switcher
+  </Card>
+</CardGroup>
+
+## Component Architecture
+
+All UI components follow a consistent architecture:
+
+<Steps>
+  <Step title="Base UI Primitives">
+    Components are built on [Base UI](https://base-ui.mui.com/react/) primitives for accessibility and behavior.
+  </Step>
+  <Step title="Class Variance Authority">
+    Variants are managed using [CVA](https://cva.style/docs) for type-safe variant composition.
+  </Step>
+  <Step title="Tailwind CSS">
+    All styling is done with Tailwind CSS utility classes for consistency and performance.
+  </Step>
+  <Step title="TypeScript">
+    Full TypeScript support with exported types and props interfaces.
+  </Step>
+</Steps>
+
+## Importing Components
+
+Components are imported from the `@/components/ui` path alias:
+
+```tsx
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+```
+
+## Component Configuration
+
+The project uses `components.json` to configure shadcn/ui:
+
+```json
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "base-vega",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles/app.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "aliases": {
+    "components": "@/components",
+    "ui": "@/components/ui",
+    "utils": "@/lib/tailwind/utils",
+    "lib": "@/lib/tailwind",
+    "hooks": "@/hooks"
+  },
+  "iconLibrary": "lucide"
+}
+```
+
+## Basic Component Usage
+
+### Button Component
+
+The Button component supports multiple variants and sizes:
+
+```tsx
+import { Button } from '@/components/ui/button';
+import { MailIcon } from 'lucide-react';
+
+export function Example() {
+  return (
+    <div className="flex gap-4">
+      <Button>Default</Button>
+      <Button variant="secondary">Secondary</Button>
+      <Button variant="destructive">Destructive</Button>
+      <Button variant="ghost">Ghost</Button>
+      <Button size="sm">Small</Button>
+      <Button size="lg">Large</Button>
+      <Button size="icon">
+        <MailIcon />
+      </Button>
+      <Button loading>Loading</Button>
+    </div>
+  );
+}
+```
+
+### Card Component
+
+Cards provide a flexible container with semantic sections:
+
+```tsx
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  CardAction,
+} from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+
+export function Example() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Card Title</CardTitle>
+        <CardDescription>Card description goes here</CardDescription>
+        <CardAction>
+          <Button variant="ghost" size="icon-sm">×</Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <p>Card content goes here</p>
+      </CardContent>
+      <CardFooter>
+        <Button>Action</Button>
+      </CardFooter>
+    </Card>
+  );
+}
+```
+
+### Alert Component
+
+Alerts display important messages with optional icons:
+
+```tsx
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { InfoIcon } from 'lucide-react';
+
+export function Example() {
+  return (
+    <Alert>
+      <InfoIcon />
+      <AlertTitle>Heads up!</AlertTitle>
+      <AlertDescription>
+        You can add components to your app using the CLI.
+      </AlertDescription>
+    </Alert>
+  );
+}
+```
+
+### Badge Component
+
+Badges display status, labels, or counts:
+
+```tsx
+import { Badge } from '@/components/ui/badge';
+
+export function Example() {
+  return (
+    <div className="flex gap-2">
+      <Badge>Default</Badge>
+      <Badge variant="secondary">Secondary</Badge>
+      <Badge variant="negative">Error</Badge>
+      <Badge variant="warning">Warning</Badge>
+      <Badge variant="positive">Success</Badge>
+      <Badge size="sm">Small</Badge>
+      <Badge size="lg">Large</Badge>
+    </div>
+  );
+}
+```
+
+## Component Props and Variants
+
+Components use Class Variance Authority (CVA) to define variants. Here's the Button component structure:
+
+```tsx
+const buttonVariants = cva(
+  "relative inline-flex w-fit items-center justify-center...",
+  {
+    variants: {
+      variant: {
+        default: 'bg-primary text-primary-foreground...',
+        secondary: 'border-border bg-background...',
+        ghost: 'hover:bg-black/5 dark:hover:bg-white/10...',
+        destructive: 'bg-destructive text-destructive-foreground...',
+        link: 'underline-offset-4 hover:underline',
+      },
+      size: {
+        default: 'h-9 px-4',
+        xs: 'h-6 px-2 text-xs',
+        sm: 'h-8 px-3',
+        lg: 'h-10 px-6',
+        icon: 'size-9',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
+    },
+  }
+);
+```
+
+## Accessibility
+
+All components follow accessibility best practices:
+
+- Semantic HTML elements with proper ARIA attributes
+- Keyboard navigation support
+- Focus visible states
+- Screen reader support
+- Color contrast compliance
+
+## Utility Function
+
+Components use the `cn()` utility for conditional class merging:
+
+```tsx
+import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+```
+
+This allows for clean conditional styling:
+
+```tsx
+<div className={cn(
+  'base-classes',
+  variant === 'primary' && 'primary-classes',
+  disabled && 'opacity-50'
+)} />
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Theming" icon="palette" href="/components/theming">
+    Learn how to customize colors and themes
+  </Card>
+  <Card title="Styling" icon="paintbrush" href="/components/styling">
+    Explore styling patterns and techniques
+  </Card>
+  <Card title="Storybook" icon="book" href="/components/storybook">
+    View and develop components in isolation
+  </Card>
+  <Card title="Forms" icon="file-input" href="/features/forms">
+    Build forms with validation and error handling
+  </Card>
+</CardGroup>

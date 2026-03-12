@@ -1,0 +1,551 @@
+---
+title: Internationalization
+description: Learn how to implement multi-language support with i18next, language detection, and translation management
+---
+
+Start UI [web] uses [i18next](https://www.i18next.com/) and [react-i18next](https://react.i18next.com/) for comprehensive internationalization (i18n) support.
+
+## Overview
+
+The i18n system includes:
+
+- **i18next**: Industry-standard i18n framework
+- **react-i18next**: React bindings for i18next
+- **Language Detection**: Automatic language detection from browser/cookies
+- **Type Safety**: TypeScript types for translation keys
+- **Multiple Languages**: English, French, Arabic, and Swahili included
+- **RTL Support**: Right-to-left layout for Arabic
+
+## Configuration
+
+### i18n Setup
+
+```ts src/lib/i18n/index.ts
+import i18n from 'i18next';
+import LanguageDetector from 'i18next-browser-languagedetector';
+import { initReactI18next } from 'react-i18next';
+import { i18nConfig } from '@/lib/i18n/config';
+
+i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init(i18nConfig);
+
+export const syncLanguage = (langKey: string) => {
+  dayjs.locale(langKey);
+};
+
+i18n.on('languageChanged', (langKey) => syncLanguage(langKey));
+
+export default i18n;
+```
+
+### Configuration Options
+
+```ts src/lib/i18n/config.ts
+import { InitOptions } from 'i18next';
+import locales from '@/locales';
+
+export const i18nConfig: InitOptions = {
+  defaultNS: DEFAULT_NAMESPACE,
+  ns: keys(locales[DEFAULT_LANGUAGE_KEY]),
+  resources: locales,
+  fallbackLng: DEFAULT_LANGUAGE_KEY,
+  supportedLngs: keys(locales),
+  
+  detection: {
+    caches: ['cookie'],
+    cookieMinutes: 43200, // 30 days
+    cookieOptions: { path: '/', sameSite: 'lax' },
+  },
+
+  returnNull: false,
+  
+  interpolation: {
+    escapeValue: false, // React already escapes
+  },
+};
+```
+
+### Available Languages
+
+```ts src/lib/i18n/constants.ts
+export const DEFAULT_LANGUAGE_KEY = 'en';
+export const DEFAULT_NAMESPACE = 'common';
+
+export const AVAILABLE_LANGUAGES = [
+  { key: 'en' },
+  { key: 'fr' },
+  { key: 'ar', dir: 'rtl', fontScale: 1.2 },
+  { key: 'sw' },
+] satisfies Language[];
+```
+
+## Translation Files
+
+Translations are organized by language and namespace:
+
+```
+src/locales/
+├── en/
+│   ├── common.json
+│   ├── auth.json
+│   ├── account.json
+│   ├── book.json
+│   ├── emails.json
+│   └── ...
+├── fr/
+│   ├── common.json
+│   ├── auth.json
+│   └── ...
+├── ar/
+└── sw/
+```
+
+### Example Translation File
+
+```json src/locales/en/auth.json
+{
+  "signOut": {
+    "action": "Sign Out",
+    "confirm": {
+      "title": "Account Sign Out",
+      "description": "You are about to end your session"
+    }
+  },
+  "pageLogin": {
+    "title": "Login to your account",
+    "description": "Enter your email to login to your account",
+    "loginWithEmail": "Login with email"
+  },
+  "common": {
+    "email": {
+      "label": "Email",
+      "required": "Email is required",
+      "invalid": "Email is invalid"
+    }
+  }
+}
+```
+
+### French Translation
+
+```json src/locales/fr/auth.json
+{
+  "signOut": {
+    "action": "Se déconnecter",
+    "confirm": {
+      "title": "Déconnexion du compte",
+      "description": "Vous êtes sur le point de terminer votre session"
+    }
+  },
+  "pageLogin": {
+    "title": "Connectez-vous à votre compte",
+    "description": "Entrez votre email pour vous connecter",
+    "loginWithEmail": "Se connecter avec email"
+  }
+}
+```
+
+## Using Translations
+
+### In Components
+
+```tsx
+import { useTranslation } from 'react-i18next';
+
+export function LoginPage() {
+  const { t } = useTranslation(['auth', 'common']);
+  
+  return (
+    <div>
+      <h1>{t('auth:pageLogin.title')}</h1>
+      <p>{t('auth:pageLogin.description')}</p>
+      <Button>{t('auth:pageLogin.loginWithEmail')}</Button>
+    </div>
+  );
+}
+```
+
+### Translation Key Format
+
+Translations use the format: `namespace:key.path`
+
+```tsx
+// Access nested keys with dot notation
+t('auth:common.email.label')          // "Email"
+t('auth:common.email.required')       // "Email is required"
+t('auth:pageLogin.title')             // "Login to your account"
+
+// Default namespace (common)
+t('actions.save')                      // From common.json
+```
+
+### With Interpolation
+
+```tsx
+// Translation file
+{
+  "welcome": "Welcome, {{name}}!",
+  "expiresIn": "Expires in {{count}} minutes"
+}
+
+// Usage
+t('welcome', { name: 'John' })
+// Output: "Welcome, John!"
+
+t('expiresIn', { count: 5 })
+// Output: "Expires in 5 minutes"
+```
+
+### Pluralization
+
+```json
+{
+  "books": "{{count}} book",
+  "books_other": "{{count}} books"
+}
+```
+
+```tsx
+t('books', { count: 1 })  // "1 book"
+t('books', { count: 5 })  // "5 books"
+```
+
+### In Server Code
+
+```tsx
+import i18n from '@/lib/i18n';
+
+// Change language
+i18n.changeLanguage('fr');
+
+// Get translation
+const message = i18n.t('emails:loginCode.subject');
+```
+
+## Language Switching
+
+### Language Selector Component
+
+```tsx
+import { useTranslation } from 'react-i18next';
+import { AVAILABLE_LANGUAGES } from '@/lib/i18n/constants';
+
+export function LanguageSelector() {
+  const { i18n } = useTranslation();
+  
+  return (
+    <Select
+      value={i18n.language}
+      onValueChange={(lang) => i18n.changeLanguage(lang)}
+    >
+      {AVAILABLE_LANGUAGES.map((lang) => (
+        <SelectItem key={lang.key} value={lang.key}>
+          {lang.key.toUpperCase()}
+        </SelectItem>
+      ))}
+    </Select>
+  );
+}
+```
+
+### Get Current Language
+
+```tsx
+const { i18n } = useTranslation();
+const currentLanguage = i18n.language; // 'en', 'fr', 'ar', 'sw'
+```
+
+### Change Language
+
+```tsx
+const { i18n } = useTranslation();
+
+// Change language
+await i18n.changeLanguage('fr');
+
+// Language is automatically saved to cookies
+```
+
+## RTL Support
+
+Arabic uses right-to-left (RTL) layout:
+
+```ts src/lib/i18n/constants.ts
+{
+  key: 'ar',
+  dir: 'rtl',        // Right-to-left
+  fontScale: 1.2,    // Larger font for Arabic
+}
+```
+
+### RTL Layout Detection
+
+```tsx
+const { i18n } = useTranslation();
+const currentLang = AVAILABLE_LANGUAGES.find(
+  (lang) => lang.key === i18n.language
+);
+const isRTL = currentLang?.dir === 'rtl';
+
+<div dir={isRTL ? 'rtl' : 'ltr'}>
+  {/* Content */}
+</div>
+```
+
+## Type Safety
+
+Get autocomplete and type checking for translation keys:
+
+```ts src/types/i18next.d.ts
+import 'i18next';
+import type { resources } from '@/locales';
+
+declare module 'i18next' {
+  interface CustomTypeOptions {
+    resources: typeof resources.en;
+  }
+}
+```
+
+Now TypeScript will validate your translation keys:
+
+```tsx
+// ✅ Valid
+t('auth:pageLogin.title')
+
+// ❌ TypeScript error
+t('auth:invalid.key')
+```
+
+## Form Validation with i18n
+
+Use translations in Zod schemas:
+
+```ts
+import { t } from 'i18next';
+import { z } from 'zod';
+
+export const zFormFieldsLogin = () =>
+  z.object({
+    email: z
+      .string({
+        error: t('auth:common.email.required'),
+      })
+      .email({
+        error: (issue) =>
+          issue.input
+            ? t('auth:common.email.invalid')
+            : t('auth:common.email.required'),
+      }),
+    name: z.string({
+      error: t('auth:common.name.required'),
+    }),
+  });
+```
+
+## Email Templates with i18n
+
+Use translations in email templates:
+
+```tsx src/emails/templates/login-code.tsx
+import i18n from '@/lib/i18n';
+
+export const TemplateLoginCode = ({
+  language,
+  code,
+}: {
+  language: string;
+  code: string;
+}) => {
+  i18n.changeLanguage(language);
+  
+  return (
+    <EmailLayout preview={i18n.t('emails:loginCode.preview')}>
+      <Heading>{i18n.t('emails:loginCode.title')}</Heading>
+      <Text>{i18n.t('emails:loginCode.intro')}</Text>
+      <Text style={styles.code}>{code}</Text>
+      <Text>
+        {i18n.t('emails:loginCode.validityTime', {
+          expiration: 10,
+        })}
+      </Text>
+    </EmailLayout>
+  );
+};
+```
+
+## Server-Side Language Detection
+
+Detect user language on the server:
+
+```ts src/server/utils.ts
+import { DEFAULT_LANGUAGE_KEY } from '@/lib/i18n/constants';
+
+export const getUserLanguage = (): string => {
+  // Get from request headers, user settings, or default
+  return DEFAULT_LANGUAGE_KEY;
+};
+```
+
+## Date and Time Localization
+
+Use Day.js for date formatting:
+
+```tsx
+import dayjs from 'dayjs';
+import 'dayjs/locale/fr';
+import 'dayjs/locale/ar';
+
+// Sync with i18n
+i18n.on('languageChanged', (langKey) => {
+  dayjs.locale(langKey);
+});
+
+// Format dates
+const date = dayjs().format('LL'); // Localized format
+```
+
+## Number Formatting
+
+```tsx
+const { i18n } = useTranslation();
+
+const price = new Intl.NumberFormat(i18n.language, {
+  style: 'currency',
+  currency: 'USD',
+}).format(99.99);
+// en: "$99.99"
+// fr: "99,99 $US"
+```
+
+## Adding a New Language
+
+<Steps>
+  <Step title="Create Language Directory">
+    Create a new directory in `src/locales/`:
+
+    ```bash
+    mkdir src/locales/es
+    ```
+  </Step>
+
+  <Step title="Copy Translation Files">
+    Copy JSON files from `en/` and translate them:
+
+    ```bash
+    cp src/locales/en/*.json src/locales/es/
+    ```
+  </Step>
+
+  <Step title="Register Language">
+    Add to `AVAILABLE_LANGUAGES`:
+
+    ```ts src/lib/i18n/constants.ts
+    export const AVAILABLE_LANGUAGES = [
+      { key: 'en' },
+      { key: 'fr' },
+      { key: 'ar', dir: 'rtl', fontScale: 1.2 },
+      { key: 'sw' },
+      { key: 'es' }, // New language
+    ];
+    ```
+  </Step>
+
+  <Step title="Import Day.js Locale">
+    Import the Day.js locale:
+
+    ```ts
+    import 'dayjs/locale/es';
+    ```
+  </Step>
+</Steps>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Namespace Organization" icon="folder-tree">
+    Group translations by feature (auth, account, book) for better organization.
+  </Card>
+
+  <Card title="Consistent Keys" icon="key">
+    Use consistent naming: `feature.component.element` (e.g., `auth.pageLogin.title`).
+  </Card>
+
+  <Card title="Avoid Hardcoded Text" icon="ban">
+    Never hardcode user-facing text - always use translation keys.
+  </Card>
+
+  <Card title="Test All Languages" icon="globe">
+    Regularly test your app in all supported languages, especially RTL.
+  </Card>
+</CardGroup>
+
+## Common Patterns
+
+### Loading Namespaces
+
+```tsx
+// Load multiple namespaces
+const { t } = useTranslation(['auth', 'common', 'book']);
+
+t('auth:pageLogin.title')
+t('common:actions.save')
+t('book:manager.title')
+```
+
+### Conditional Translations
+
+```tsx
+const isSignUp = true;
+const key = isSignUp ? 'pageLoginWithSignUp' : 'pageLogin';
+
+<h1>{t(`auth:${key}.title`)}</h1>
+```
+
+### Dynamic Keys
+
+```tsx
+const errorCode = 'INVALID_EMAIL';
+
+try {
+  // ...
+} catch (error) {
+  toast.error(t(`auth:errorCode.${errorCode}`));
+}
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Translation not found">
+    Check:
+    1. Translation key exists in JSON file
+    2. Namespace is loaded: `useTranslation(['namespace'])`
+    3. Correct namespace prefix: `namespace:key`
+    4. No typos in translation key
+  </Accordion>
+
+  <Accordion title="Language not changing">
+    Verify:
+    1. Language code is in `AVAILABLE_LANGUAGES`
+    2. Translation files exist for that language
+    3. Cookie is not blocking language change
+    4. Page reloaded after language change
+  </Accordion>
+
+  <Accordion title="RTL layout issues">
+    Ensure:
+    1. `dir="rtl"` is set on container element
+    2. CSS supports RTL (use logical properties)
+    3. Icons and images are mirrored if needed
+    4. Text alignment is handled correctly
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Learn about [Email](/features/email) templates with i18n
+- Set up [Authentication](/features/authentication) with localized messages
+- Configure [Forms](/features/forms) with translated validation errors

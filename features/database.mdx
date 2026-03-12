@@ -1,0 +1,645 @@
+---
+title: Database
+description: Learn how to use Prisma ORM for database operations, schema management, migrations, and seeding
+---
+
+Start UI [web] uses [Prisma](https://www.prisma.io/) as the ORM for database operations, providing type-safe database access with PostgreSQL.
+
+## Overview
+
+The database layer includes:
+
+- **Prisma ORM**: Type-safe database client with auto-completion
+- **PostgreSQL**: Production-ready relational database
+- **Migrations**: Version-controlled schema changes
+- **Seeding**: Sample data for development
+- **Performance Monitoring**: Query timing integration
+
+## Schema Definition
+
+The Prisma schema is defined in `prisma/schema.prisma`:
+
+```prisma prisma/schema.prisma
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/server/db/generated"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+```
+
+### Models
+
+<Tabs>
+  <Tab title="User">
+    ```prisma
+    enum UserRole {
+      user
+      admin
+    }
+
+    model User {
+      id            String    @id @default(cuid())
+      name          String
+      email         String    @unique
+      emailVerified Boolean
+      image         String?
+      createdAt     DateTime  @default(now())
+      updatedAt     DateTime  @updatedAt
+      sessions      Session[]
+      accounts      Account[]
+      
+      role          UserRole?
+      banned        Boolean?
+      banReason     String?
+      banExpires    DateTime?
+      onboardedAt   DateTime?
+
+      @@map("user")
+    }
+    ```
+  </Tab>
+
+  <Tab title="Book">
+    ```prisma
+    model Book {
+      id        String   @id @default(cuid())
+      createdAt DateTime @default(now())
+      updatedAt DateTime @updatedAt
+      title     String
+      author    String
+      genre     Genre?   @relation(fields: [genreId], references: [id])
+      genreId   String
+      publisher String?
+      coverId   String?
+
+      @@unique([title, author])
+      @@map("book")
+    }
+    ```
+  </Tab>
+
+  <Tab title="Genre">
+    ```prisma
+    model Genre {
+      id        String   @id @default(cuid())
+      createdAt DateTime @default(now())
+      updatedAt DateTime @updatedAt
+      name      String   @unique
+      color     String
+      books     Book[]
+
+      @@map("genre")
+    }
+    ```
+  </Tab>
+
+  <Tab title="Auth Models">
+    ```prisma
+    model Session {
+      id        String   @id @default(cuid())
+      expiresAt DateTime
+      token     String   @unique
+      createdAt DateTime @default(now())
+      updatedAt DateTime @updatedAt
+      ipAddress String?
+      userAgent String?
+      userId    String
+      user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+      @@map("session")
+    }
+
+    model Account {
+      id                    String    @id @default(cuid())
+      accountId             String
+      providerId            String
+      userId                String
+      user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+      accessToken           String?
+      refreshToken          String?
+      idToken               String?
+      accessTokenExpiresAt  DateTime?
+      refreshTokenExpiresAt DateTime?
+      scope                 String?
+      password              String?
+      createdAt             DateTime  @default(now())
+      updatedAt             DateTime  @updatedAt
+
+      @@map("account")
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Database Setup
+
+### Environment Configuration
+
+Configure your database connection in `.env`:
+
+```bash .env
+# Docker PostgreSQL
+DOCKER_DATABASE_PORT="5432"
+DOCKER_DATABASE_NAME="startui"
+DOCKER_DATABASE_USERNAME="startui"
+DOCKER_DATABASE_PASSWORD="startui"
+
+# Database URL
+DATABASE_URL="postgres://${DOCKER_DATABASE_USERNAME}:${DOCKER_DATABASE_PASSWORD}@localhost:${DOCKER_DATABASE_PORT}/${DOCKER_DATABASE_NAME}"
+```
+
+### Start Database
+
+<Steps>
+  <Step title="Start Docker Container">
+    The PostgreSQL database runs in Docker:
+
+    ```bash
+    docker-compose up -d
+    ```
+  </Step>
+
+  <Step title="Generate Prisma Client">
+    Generate the type-safe Prisma client:
+
+    ```bash
+    npm run db:generate
+    ```
+  </Step>
+
+  <Step title="Run Migrations">
+    Apply schema changes to the database:
+
+    ```bash
+    npm run db:migrate
+    ```
+  </Step>
+
+  <Step title="Seed Data (Optional)">
+    Populate the database with sample data:
+
+    ```bash
+    npm run db:seed
+    ```
+  </Step>
+</Steps>
+
+## Prisma Client
+
+The Prisma client is configured in `src/server/db/index.ts` with performance monitoring:
+
+```ts src/server/db/index.ts
+import { PrismaClient } from './generated/client';
+
+function createPrisma() {
+  return new PrismaClient({
+    log: levels[envServer.LOGGER_LEVEL],
+  }).$extends({
+    name: 'server-timing',
+    query: {
+      $allModels: {
+        async $allOperations({ query, args, model, operation }) {
+          const start = performance.now();
+          const result = await query(args);
+          const duration = performance.now() - start;
+
+          // Track query performance
+          const store = timingStore.getStore();
+          if (store) {
+            store.prisma.push({ model, operation, duration });
+          }
+
+          return result;
+        },
+      },
+    },
+  });
+}
+
+export const db = globalForPrisma.prisma ?? createPrisma();
+```
+
+### Usage
+
+Import the `db` instance to perform database operations:
+
+```ts
+import { db } from '@/server/db';
+
+// Find all books
+const books = await db.book.findMany({
+  include: { genre: true },
+});
+
+// Create a book
+const newBook = await db.book.create({
+  data: {
+    title: 'The Great Gatsby',
+    author: 'F. Scott Fitzgerald',
+    genreId: 'classic-genre-id',
+  },
+});
+```
+
+## CRUD Operations
+
+### Create
+
+```ts
+// Create a single record
+const genre = await db.genre.create({
+  data: {
+    name: 'Science Fiction',
+    color: '#005F78',
+  },
+});
+
+// Create many records
+const genres = await db.genre.createMany({
+  data: [
+    { name: 'Fantasy', color: '#005F78' },
+    { name: 'Mystery', color: '#A50036' },
+  ],
+});
+```
+
+### Read
+
+```ts
+// Find unique record
+const user = await db.user.findUnique({
+  where: { email: 'user@example.com' },
+});
+
+// Find first match
+const book = await db.book.findFirst({
+  where: {
+    author: 'Jane Austen',
+    title: 'Pride and Prejudice',
+  },
+});
+
+// Find many with filters
+const books = await db.book.findMany({
+  where: {
+    genreId: 'fantasy-id',
+  },
+  include: {
+    genre: true,
+  },
+  orderBy: {
+    createdAt: 'desc',
+  },
+  take: 10,
+  skip: 0,
+});
+
+// Count records
+const count = await db.book.count({
+  where: {
+    genreId: 'fantasy-id',
+  },
+});
+```
+
+### Update
+
+```ts
+// Update single record
+const updatedBook = await db.book.update({
+  where: { id: 'book-id' },
+  data: {
+    title: 'Updated Title',
+    publisher: 'New Publisher',
+  },
+});
+
+// Update many records
+const result = await db.book.updateMany({
+  where: {
+    author: 'Anonymous',
+  },
+  data: {
+    author: 'Unknown Author',
+  },
+});
+
+// Upsert (update or create)
+const genre = await db.genre.upsert({
+  where: { name: 'Drama' },
+  create: {
+    name: 'Drama',
+    color: '#006045',
+  },
+  update: {
+    color: '#006045',
+  },
+});
+```
+
+### Delete
+
+```ts
+// Delete single record
+await db.book.delete({
+  where: { id: 'book-id' },
+});
+
+// Delete many records
+await db.book.deleteMany({
+  where: {
+    genreId: 'genre-to-remove',
+  },
+});
+```
+
+## Relations
+
+### Include Related Data
+
+```ts
+const books = await db.book.findMany({
+  include: {
+    genre: true, // Include genre data
+  },
+});
+```
+
+### Connect Relations
+
+```ts
+const book = await db.book.create({
+  data: {
+    title: '1984',
+    author: 'George Orwell',
+    genre: {
+      connect: { id: 'dystopian-genre-id' },
+    },
+  },
+});
+```
+
+### Create Nested Data
+
+```ts
+const book = await db.book.create({
+  data: {
+    title: 'Dune',
+    author: 'Frank Herbert',
+    genre: {
+      create: {
+        name: 'Science Fiction',
+        color: '#8A0194',
+      },
+    },
+  },
+});
+```
+
+## Migrations
+
+### Create Migration
+
+After modifying the Prisma schema, create a migration:
+
+```bash
+npm run db:migrate:create
+```
+
+Prisma will:
+1. Generate SQL migration files
+2. Apply the migration to your database
+3. Regenerate the Prisma client
+
+### Migration Files
+
+Migrations are stored in `prisma/migrations/`:
+
+```
+prisma/
+└── migrations/
+    ├── 20240312_init/
+    │   └── migration.sql
+    └── migration_lock.toml
+```
+
+### Reset Database
+
+<Warning>
+This will delete all data and re-run all migrations from scratch.
+</Warning>
+
+```bash
+npm run db:reset
+```
+
+## Seeding
+
+Seed your database with sample data for development.
+
+### Seed Script
+
+The main seed file is `prisma/seed/index.ts`:
+
+```ts prisma/seed/index.ts
+import { db } from '@/server/db';
+import { createBooks } from './book';
+import { createUsers } from './user';
+
+async function main() {
+  await createBooks();
+  await createUsers();
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(() => {
+    db.$disconnect();
+  });
+```
+
+### Example: Seeding Books
+
+```ts prisma/seed/book.ts
+export async function createBooks() {
+  console.log('⏳ Seeding genre');
+  
+  const genres = [
+    ['Adventure', '#9F0712'],
+    ['Business', '#973C00'],
+    ['Classic', '#3C6300'],
+    ['Fantasy', '#005F78'],
+    ['Science Fiction', '#8A0194'],
+  ] as const;
+
+  await db.genre.createMany({
+    data: genres.map(([name, color]) => ({ name, color })),
+  });
+
+  console.log('⏳ Seeding books');
+  const existingGenres = await db.genre.findMany();
+
+  await db.book.create({
+    data: {
+      title: '1984',
+      author: 'George Orwell',
+      genre: {
+        connect: existingGenres[randomInt(existingGenres.length)],
+      },
+      publisher: faker.book.publisher(),
+    },
+  });
+
+  console.log('✅ Books seeded');
+}
+```
+
+### Run Seeding
+
+```bash
+npm run db:seed
+```
+
+## Transactions
+
+Use transactions to ensure data consistency:
+
+```ts
+const result = await db.$transaction(async (tx) => {
+  // Create genre
+  const genre = await tx.genre.create({
+    data: {
+      name: 'Mystery',
+      color: '#A50036',
+    },
+  });
+
+  // Create book with the new genre
+  const book = await tx.book.create({
+    data: {
+      title: 'Murder on the Orient Express',
+      author: 'Agatha Christie',
+      genreId: genre.id,
+    },
+  });
+
+  return { genre, book };
+});
+```
+
+<Note>
+If any operation in the transaction fails, all changes are rolled back.
+</Note>
+
+## Query Optimization
+
+### Select Specific Fields
+
+```ts
+const books = await db.book.findMany({
+  select: {
+    id: true,
+    title: true,
+    author: true,
+    // Don't fetch all fields
+  },
+});
+```
+
+### Pagination
+
+```ts
+const page = 1;
+const pageSize = 10;
+
+const books = await db.book.findMany({
+  skip: (page - 1) * pageSize,
+  take: pageSize,
+  orderBy: { createdAt: 'desc' },
+});
+
+const total = await db.book.count();
+const totalPages = Math.ceil(total / pageSize);
+```
+
+### Batching
+
+```ts
+// Instead of multiple queries
+const genres = await Promise.all(
+  bookIds.map(id => db.genre.findUnique({ where: { id } }))
+);
+
+// Use findMany with filters
+const genres = await db.genre.findMany({
+  where: {
+    id: { in: bookIds },
+  },
+});
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Transactions" icon="arrows-rotate">
+    Wrap related operations in transactions to maintain data consistency.
+  </Card>
+
+  <Card title="Avoid N+1 Queries" icon="gauge-high">
+    Use `include` or `select` to fetch related data in a single query.
+  </Card>
+
+  <Card title="Index Frequently Queried Fields" icon="magnifying-glass">
+    Add `@@index` to fields used in `where` clauses for better performance.
+  </Card>
+
+  <Card title="Validate Before Database" icon="shield-check">
+    Use Zod schemas to validate data before database operations.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Prisma Client not generating">
+    Ensure the schema is valid and run:
+    
+    ```bash
+    npm run db:generate
+    ```
+    
+    If issues persist, delete `node_modules` and reinstall dependencies.
+  </Accordion>
+
+  <Accordion title="Migration conflicts">
+    If you have conflicting migrations:
+    
+    ```bash
+    # Reset and recreate from schema
+    npm run db:reset
+    ```
+    
+    This will delete all data, so backup if needed.
+  </Accordion>
+
+  <Accordion title="Connection errors">
+    Verify:
+    1. PostgreSQL is running: `docker ps`
+    2. `DATABASE_URL` is correct in `.env`
+    3. Database credentials match Docker configuration
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Learn about [Forms](/features/forms) with Zod validation
+- Set up [Authentication](/features/authentication) with user models
+- Configure [File Uploads](/features/file-uploads) for storing media

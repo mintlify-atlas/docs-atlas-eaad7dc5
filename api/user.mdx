@@ -1,0 +1,915 @@
+---
+title: User API
+description: Admin endpoints for user management and session control
+icon: users
+---
+
+## Overview
+
+The User API provides comprehensive admin-level endpoints for managing users and their sessions. All endpoints require authentication and specific admin permissions.
+
+<Warning>
+  These are **admin-only** endpoints. For user self-service operations, see the [Account API](/api/account).
+</Warning>
+
+## Permissions
+
+User API endpoints require the following permissions:
+
+- `user:list` - View users and their details
+- `user:create` - Create new users
+- `user:set-role` - Update user roles and information
+- `user:delete` - Delete users
+- `session:list` - View user sessions
+- `session:revoke` - Revoke user sessions
+
+## User Management Endpoints
+
+### List All Users
+
+Retrieve a paginated list of users with optional search.
+
+```typescript
+GET /users
+```
+
+**Source**: `src/server/routers/user.ts:13-84`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `user:list` permission
+</ParamField>
+
+#### Query Parameters
+
+<ParamField query="cursor" type="string" optional>
+  Cursor for pagination (ID of the last user from the previous page)
+</ParamField>
+
+<ParamField query="limit" type="number" default="20">
+  Number of users per page (min: 1, max: 100)
+</ParamField>
+
+<ParamField query="searchTerm" type="string" default="" optional>
+  Search term to filter users by name or email (case-insensitive)
+</ParamField>
+
+#### Response
+
+<ResponseField name="items" type="User[]">
+  Array of user objects for the current page
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string" optional>
+  Cursor for the next page (undefined if no more pages)
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total count of users matching the search criteria
+</ResponseField>
+
+#### User Object
+
+<Expandable title="User Object Fields">
+  <ResponseField name="id" type="string">
+    Unique user identifier
+  </ResponseField>
+
+  <ResponseField name="name" type="string | null">
+    User's full name
+  </ResponseField>
+
+  <ResponseField name="email" type="string">
+    User's email address (unique)
+  </ResponseField>
+
+  <ResponseField name="emailVerified" type="boolean">
+    Whether the user's email has been verified
+  </ResponseField>
+
+  <ResponseField name="role" type="string | null">
+    User's role (e.g., "user", "admin")
+  </ResponseField>
+
+  <ResponseField name="image" type="string | null">
+    URL to user's profile image
+  </ResponseField>
+
+  <ResponseField name="createdAt" type="Date">
+    Account creation timestamp
+  </ResponseField>
+
+  <ResponseField name="updatedAt" type="Date">
+    Last update timestamp
+  </ResponseField>
+
+  <ResponseField name="onboardedAt" type="Date | null">
+    Onboarding completion timestamp (null if not completed)
+  </ResponseField>
+</Expandable>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function UserList() {
+  const { data, isLoading, fetchNextPage, hasNextPage } = 
+    orpc.user.getAll.useInfiniteQuery({
+      input: (page) => ({
+        searchTerm: '',
+        limit: 20,
+        cursor: page?.nextCursor,
+      }),
+      getNextPageParam: (lastPage) => 
+        lastPage.nextCursor ? { nextCursor: lastPage.nextCursor } : undefined,
+    });
+
+  if (isLoading) return <div>Loading users...</div>;
+
+  return (
+    <div>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Verified</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data?.pages.flatMap(page => page.items).map(user => (
+            <tr key={user.id}>
+              <td>{user.name}</td>
+              <td>{user.email}</td>
+              <td>{user.role}</td>
+              <td>{user.emailVerified ? '✓' : '✗'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      
+      {hasNextPage && (
+        <button onClick={() => fetchNextPage()}>
+          Load More
+        </button>
+      )}
+      
+      <p>Total: {data?.pages[0]?.total} users</p>
+    </div>
+  );
+}
+```
+
+```typescript REST API
+const params = new URLSearchParams({
+  searchTerm: 'john',
+  limit: '20',
+});
+
+const response = await fetch(`/api/rest/users?${params}`, {
+  headers: {
+    'Authorization': 'Bearer YOUR_ADMIN_TOKEN',
+  },
+});
+
+const data = await response.json();
+```
+
+```bash cURL
+curl "https://your-app.com/api/rest/users?searchTerm=john&limit=20" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+</CodeGroup>
+
+---
+
+### Get User by ID
+
+Retrieve a single user by their ID.
+
+```typescript
+GET /users/{id}
+```
+
+**Source**: `src/server/routers/user.ts:86-114`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `user:list` permission
+</ParamField>
+
+#### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Unique user identifier
+</ParamField>
+
+#### Response
+
+<ResponseField name="User" type="object">
+  Single user object with all fields
+</ResponseField>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+import { useParams } from '@tanstack/react-router';
+
+function UserDetail() {
+  const { userId } = useParams({ from: '/admin/users/$userId' });
+  
+  const { data: user, isLoading, error } = orpc.user.getById.useQuery({
+    input: { id: userId },
+  });
+
+  if (isLoading) return <div>Loading user...</div>;
+  if (error) return <div>User not found</div>;
+
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      <p>Email: {user.email}</p>
+      <p>Role: {user.role}</p>
+      <p>Verified: {user.emailVerified ? 'Yes' : 'No'}</p>
+      <p>Joined: {new Date(user.createdAt).toLocaleDateString()}</p>
+    </div>
+  );
+}
+```
+
+```bash cURL
+curl https://your-app.com/api/rest/users/user-123 \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+</CodeGroup>
+
+---
+
+### Create User
+
+Create a new user account.
+
+```typescript
+POST /users
+```
+
+**Source**: `src/server/routers/user.ts:161-189`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `user:create` permission
+</ParamField>
+
+#### Request Body
+
+<ParamField body="name" type="string" optional>
+  User's full name
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  User's email address (must be unique)
+</ParamField>
+
+<ParamField body="role" type="string" optional>
+  User's role (defaults to "user" if not specified)
+</ParamField>
+
+#### Response
+
+<ResponseField name="User" type="object">
+  The newly created user object
+</ResponseField>
+
+<Note>
+  Created users have `emailVerified` automatically set to `true`.
+</Note>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function CreateUserForm() {
+  const { mutate, isPending } = orpc.user.create.useMutation({
+    onSuccess: (newUser) => {
+      console.log('User created:', newUser.id);
+      orpc.user.getAll.invalidate();
+    },
+  });
+
+  const handleSubmit = (values) => {
+    mutate({
+      input: {
+        name: values.name,
+        email: values.email,
+        role: values.role || 'user',
+      },
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input name="name" placeholder="Name" />
+      <input name="email" type="email" placeholder="Email" required />
+      <select name="role">
+        <option value="user">User</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button type="submit" disabled={isPending}>
+        Create User
+      </button>
+    </form>
+  );
+}
+```
+
+```bash cURL
+curl -X POST https://your-app.com/api/rest/users \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -d '{
+    "name": "Jane Doe",
+    "email": "jane@example.com",
+    "role": "user"
+  }'
+```
+
+</CodeGroup>
+
+---
+
+### Update User
+
+Update an existing user's information and role.
+
+```typescript
+POST /users/{id}
+```
+
+**Source**: `src/server/routers/user.ts:116-159`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `user:set-role` permission
+</ParamField>
+
+#### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Unique user identifier
+</ParamField>
+
+#### Request Body
+
+<ParamField body="name" type="string" optional>
+  Updated user name
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Updated email address
+</ParamField>
+
+<ParamField body="role" type="string" optional>
+  Updated user role
+</ParamField>
+
+#### Response
+
+<ResponseField name="User" type="object">
+  The updated user object
+</ResponseField>
+
+<Warning>
+  **Important Security Features:**
+  
+  1. You **cannot change your own role** - prevents accidental privilege removal
+  2. If email is changed, `emailVerified` is automatically set to `true`
+</Warning>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function EditUserForm({ userId, initialData }) {
+  const { mutate, isPending } = orpc.user.updateById.useMutation({
+    onSuccess: () => {
+      orpc.user.getById.invalidate({ input: { id: userId } });
+      orpc.user.getAll.invalidate();
+    },
+  });
+
+  const handleSubmit = (values) => {
+    mutate({
+      input: {
+        id: userId,
+        name: values.name,
+        email: values.email,
+        role: values.role,
+      },
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* Form fields */}
+      <button type="submit" disabled={isPending}>
+        Update User
+      </button>
+    </form>
+  );
+}
+```
+
+```bash cURL
+curl -X POST https://your-app.com/api/rest/users/user-123 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -d '{
+    "id": "user-123",
+    "name": "John Smith",
+    "email": "john.smith@example.com",
+    "role": "admin"
+  }'
+```
+
+</CodeGroup>
+
+---
+
+### Delete User
+
+Delete a user account.
+
+```typescript
+DELETE /users/{id}
+```
+
+**Source**: `src/server/routers/user.ts:191-227`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `user:delete` permission
+</ParamField>
+
+#### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Unique user identifier
+</ParamField>
+
+#### Response
+
+<ResponseField name="void" type="void">
+  Returns void on successful deletion
+</ResponseField>
+
+<Warning>
+  You **cannot delete yourself**. Attempting to delete your own account will return a `BAD_REQUEST` error.
+</Warning>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function DeleteUserButton({ userId, currentUserId }) {
+  const { mutate, isPending } = orpc.user.deleteById.useMutation({
+    onSuccess: () => {
+      orpc.user.getAll.invalidate();
+      router.navigate({ to: '/admin/users' });
+    },
+    onError: (error) => {
+      if (error.message.includes('cannot delete yourself')) {
+        alert('You cannot delete your own account');
+      }
+    },
+  });
+
+  const handleDelete = () => {
+    if (userId === currentUserId) {
+      alert('You cannot delete your own account');
+      return;
+    }
+    
+    if (confirm('Are you sure you want to delete this user?')) {
+      mutate({ input: { id: userId } });
+    }
+  };
+
+  return (
+    <button 
+      onClick={handleDelete} 
+      disabled={isPending || userId === currentUserId}
+    >
+      {isPending ? 'Deleting...' : 'Delete User'}
+    </button>
+  );
+}
+```
+
+```bash cURL
+curl -X DELETE https://your-app.com/api/rest/users/user-123 \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+</CodeGroup>
+
+---
+
+## Session Management Endpoints
+
+### Get User Sessions
+
+Retrieve all sessions for a specific user.
+
+```typescript
+GET /users/{userId}/sessions
+```
+
+**Source**: `src/server/routers/user.ts:229-285`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `session:list` permission
+</ParamField>
+
+#### Path Parameters
+
+<ParamField path="userId" type="string" required>
+  User ID to retrieve sessions for
+</ParamField>
+
+#### Query Parameters
+
+<ParamField query="cursor" type="string" optional>
+  Cursor for pagination
+</ParamField>
+
+<ParamField query="limit" type="number" default="20">
+  Number of sessions per page (min: 1, max: 100)
+</ParamField>
+
+#### Response
+
+<ResponseField name="items" type="Session[]">
+  Array of session objects
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string" optional>
+  Cursor for next page
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total count of user sessions
+</ResponseField>
+
+#### Session Object
+
+<Expandable title="Session Object Fields">
+  <ResponseField name="id" type="string">
+    Unique session identifier
+  </ResponseField>
+
+  <ResponseField name="token" type="string">
+    Session token (used for authentication)
+  </ResponseField>
+
+  <ResponseField name="createdAt" type="Date">
+    Session creation timestamp
+  </ResponseField>
+
+  <ResponseField name="updatedAt" type="Date">
+    Last activity timestamp
+  </ResponseField>
+
+  <ResponseField name="expiresAt" type="Date">
+    Session expiration timestamp
+  </ResponseField>
+</Expandable>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function UserSessions({ userId }) {
+  const { data, isLoading } = orpc.user.getUserSessions.useQuery({
+    input: { userId, limit: 50 },
+  });
+
+  if (isLoading) return <div>Loading sessions...</div>;
+
+  return (
+    <div>
+      <h3>Active Sessions ({data?.total})</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Created</th>
+            <th>Expires</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data?.items.map((session) => (
+            <tr key={session.id}>
+              <td>{new Date(session.createdAt).toLocaleString()}</td>
+              <td>{new Date(session.expiresAt).toLocaleString()}</td>
+              <td>
+                <RevokeSessionButton 
+                  userId={userId} 
+                  sessionToken={session.token} 
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+```
+
+```bash cURL
+curl "https://your-app.com/api/rest/users/user-123/sessions?limit=50" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+</CodeGroup>
+
+---
+
+### Revoke All User Sessions
+
+Revoke all active sessions for a user (force logout from all devices).
+
+```typescript
+POST /users/{id}/sessions/revoke
+```
+
+**Source**: `src/server/routers/user.ts:287-325`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `session:revoke` permission
+</ParamField>
+
+#### Path Parameters
+
+<ParamField path="id" type="string" required>
+  User ID whose sessions should be revoked
+</ParamField>
+
+#### Response
+
+<ResponseField name="void" type="void">
+  Returns void on success
+</ResponseField>
+
+<Warning>
+  You **cannot revoke all of your own sessions**. This prevents accidental lockout.
+</Warning>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function RevokeAllSessionsButton({ userId, currentUserId }) {
+  const { mutate, isPending } = orpc.user.revokeUserSessions.useMutation({
+    onSuccess: () => {
+      orpc.user.getUserSessions.invalidate({ input: { userId } });
+      alert('All sessions revoked successfully');
+    },
+  });
+
+  const handleRevoke = () => {
+    if (userId === currentUserId) {
+      alert('You cannot revoke all of your own sessions');
+      return;
+    }
+    
+    if (confirm('Revoke all sessions? The user will be logged out from all devices.')) {
+      mutate({ input: { id: userId } });
+    }
+  };
+
+  return (
+    <button 
+      onClick={handleRevoke} 
+      disabled={isPending || userId === currentUserId}
+    >
+      Revoke All Sessions
+    </button>
+  );
+}
+```
+
+```bash cURL
+curl -X POST https://your-app.com/api/rest/users/user-123/sessions/revoke \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+</CodeGroup>
+
+---
+
+### Revoke Single Session
+
+Revoke a specific user session.
+
+```typescript
+POST /users/{id}/sessions/{sessionToken}/revoke
+```
+
+**Source**: `src/server/routers/user.ts:327-366`
+
+#### Authentication
+
+<ParamField path="permissions" type="object">
+  Requires `session:revoke` permission
+</ParamField>
+
+#### Path Parameters
+
+<ParamField path="id" type="string" required>
+  User ID
+</ParamField>
+
+<ParamField path="sessionToken" type="string" required>
+  Session token to revoke
+</ParamField>
+
+#### Response
+
+<ResponseField name="void" type="void">
+  Returns void on success
+</ResponseField>
+
+<Warning>
+  You **cannot revoke your current session**. This prevents accidental lockout.
+</Warning>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function RevokeSessionButton({ userId, sessionToken, currentSessionToken }) {
+  const { mutate, isPending } = orpc.user.revokeUserSession.useMutation({
+    onSuccess: () => {
+      orpc.user.getUserSessions.invalidate({ input: { userId } });
+    },
+  });
+
+  const handleRevoke = () => {
+    if (sessionToken === currentSessionToken) {
+      alert('You cannot revoke your current session');
+      return;
+    }
+    
+    mutate({ input: { id: userId, sessionToken } });
+  };
+
+  const isCurrentSession = sessionToken === currentSessionToken;
+
+  return (
+    <button 
+      onClick={handleRevoke} 
+      disabled={isPending || isCurrentSession}
+      title={isCurrentSession ? 'Current session' : 'Revoke this session'}
+    >
+      {isCurrentSession ? 'Current' : 'Revoke'}
+    </button>
+  );
+}
+```
+
+```bash cURL
+curl -X POST "https://your-app.com/api/rest/users/user-123/sessions/session-token-abc/revoke" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+</CodeGroup>
+
+---
+
+## Search Implementation
+
+User search filters by name or email (case-insensitive):
+
+```typescript
+const where = {
+  OR: [
+    {
+      name: {
+        contains: input.searchTerm,
+        mode: 'insensitive',
+      },
+    },
+    {
+      email: {
+        contains: input.searchTerm,
+        mode: 'insensitive',
+      },
+    },
+  ],
+} satisfies Prisma.UserWhereInput;
+```
+
+**Source**: `src/server/routers/user.ts:40-55`
+
+---
+
+## Error Handling
+
+<ResponseField name="UNAUTHORIZED" type="401">
+  Missing or invalid authentication credentials
+</ResponseField>
+
+<ResponseField name="FORBIDDEN" type="403">
+  Insufficient permissions for the operation
+</ResponseField>
+
+<ResponseField name="NOT_FOUND" type="404">
+  User with the specified ID does not exist
+</ResponseField>
+
+<ResponseField name="CONFLICT" type="409">
+  Email already exists when creating/updating user
+</ResponseField>
+
+<ResponseField name="BAD_REQUEST" type="400">
+  - Attempting to delete yourself
+  - Attempting to revoke your own sessions
+  - Invalid input parameters
+</ResponseField>
+
+### Error Examples
+
+```json
+// Cannot delete self
+{
+  "error": {
+    "code": "BAD_REQUEST",
+    "message": "You cannot delete yourself",
+    "status": 400
+  }
+}
+```
+
+```json
+// Email conflict
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "Unique constraint violation",
+    "status": 409,
+    "data": {
+      "target": ["email"]
+    }
+  }
+}
+```
+
+---
+
+## Related APIs
+
+<CardGroup cols={2}>
+  <Card title="Account API" icon="user" href="/api/account">
+    User self-service profile management
+  </Card>
+  <Card title="Permissions" icon="shield-check" href="/features/authentication">
+    Learn about role-based access control
+  </Card>
+</CardGroup>

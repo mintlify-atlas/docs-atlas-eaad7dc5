@@ -1,80 +1,252 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get up and running with Start UI [web] in minutes
 ---
 
-## Get started in three steps
+# Quickstart Guide
 
-Get your documentation site running locally and make your first customization.
+Get your Start UI [web] application up and running in just a few minutes with our scaffold command.
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+Before you begin, ensure you have the following installed:
+
+- **Node.js** ≥ 22 ([Download](https://nodejs.org))
+- **pnpm** package manager ([Install pnpm](https://pnpm.io/installation))
+- **Docker Desktop** (optional, but recommended for database) ([Download](https://www.docker.com/products/docker-desktop/))
+
+<Tip>
+  If you don't have pnpm installed, you can install it globally with:
+  ```bash
+  npm install -g pnpm
+  ```
+</Tip>
+
+## Create Your App
+
+<Steps>
+  <Step title="Scaffold the project">
+    Run the create command to scaffold a new Start UI [web] project:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```bash
+    pnpm create start-ui -t web myApp
+    ```
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    This will create a new folder called `myApp` with the latest version of Start UI [web].
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    <Info>
+      Replace `myApp` with your preferred project name. The command will create a new directory with that name in your current location.
+    </Info>
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Navigate to your project">
+    Change into your newly created project directory:
+    
+    ```bash
+    cd myApp
+    ```
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Set up environment variables">
+    Copy the example environment file to create your local configuration:
+    
+    ```bash
+    cp .env.example .env
+    ```
+    
+    The `.env.example` file contains all necessary environment variables with sensible defaults for local development.
+    
+    <Warning>
+      Make sure to update the `AUTH_SECRET` in your `.env` file. You can generate a secure secret with:
+      ```bash
+      npx @better-auth/cli@latest secret
+      ```
+    </Warning>
+  </Step>
 
-### Step 3: Go live
+  <Step title="Install dependencies">
+    Install all project dependencies using pnpm:
+    
+    ```bash
+    pnpm install
+    ```
+    
+    This will install all necessary packages and run post-install scripts including Prisma client generation.
+  </Step>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+  <Step title="Initialize Docker containers">
+    Start the required services (PostgreSQL, MinIO, and Maildev) using Docker:
+    
+    ```bash
+    pnpm dk:init
+    ```
+    
+    This command starts:
+    - **PostgreSQL** - Database server (port 5432)
+    - **MinIO** - S3-compatible file storage (API: port 9000, UI: port 9001)
+    - **Maildev** - Email testing server (SMTP: port 1025, UI: port 1080)
+    
+    <Note>
+      Don't have Docker? You can use an existing PostgreSQL database by updating the `DATABASE_URL` in your `.env` file, then skip to step 6 and run `pnpm db:push` and `pnpm db:seed` separately.
+    </Note>
+  </Step>
 
-## Next steps
+  <Step title="Initialize the database">
+    Push the Prisma schema to your database and seed it with initial data:
+    
+    ```bash
+    pnpm db:init
+    ```
+    
+    This command:
+    - Pushes the database schema to PostgreSQL
+    - Seeds the database with example data (users, books, genres, etc.)
+  </Step>
 
-Now that you have your docs running, explore these key features:
+  <Step title="Start the development server">
+    Launch the development server:
+    
+    ```bash
+    pnpm dev
+    ```
+    
+    Your application will be available at:
+    
+    ```
+    http://localhost:3000
+    ```
+    
+    <Info>
+      The development server includes hot module replacement (HMR) for instant feedback as you code.
+    </Info>
+  </Step>
+</Steps>
+
+## Your Application is Ready!
+
+You should now see the Start UI [web] home page. The starter includes several pre-built pages and features:
+
+### Default Users
+
+The seeded database includes test users you can use to explore the application:
+
+<CodeGroup>
+```text Admin User
+Email: admin@startui.com
+Password: admin
+```
+
+```text Regular User
+Email: user@startui.com  
+Password: user
+```
+</CodeGroup>
+
+### Available Development Tools
+
+With your application running, you have access to several development tools:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Application" icon="browser" href="http://localhost:3000">
+    Main application at `http://localhost:3000`
+  </Card>
+  
+  <Card title="Maildev UI" icon="envelope" href="http://localhost:1080">
+    View development emails at `http://localhost:1080`
+  </Card>
+  
+  <Card title="MinIO Console" icon="database" href="http://localhost:9001">
+    Manage file storage at `http://localhost:9001`
+  </Card>
+  
+  <Card title="API Documentation" icon="book" href="http://localhost:3000/api/openapi/app">
+    OpenAPI docs at `http://localhost:3000/api/openapi/app`
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Useful Commands
+
+Here are some common commands you'll use during development:
+
+```bash
+# Development
+pnpm dev                    # Start development server
+pnpm build                  # Build for production
+pnpm start                  # Start production server
+
+# Database
+pnpm db:push                # Push schema changes to database
+pnpm db:seed                # Seed database with example data
+pnpm db:ui                  # Open Prisma Studio to view/edit data
+
+# Docker
+pnpm dk:start               # Start Docker containers
+pnpm dk:stop                # Stop Docker containers
+pnpm dk:clear               # Remove containers and volumes
+
+# Testing
+pnpm test                   # Run unit tests
+pnpm test:ui                # Run tests with UI
+pnpm e2e                    # Run E2E tests
+pnpm e2e:ui                 # Run E2E tests with Playwright UI
+
+# Code Quality
+pnpm lint                   # Run ESLint and TypeScript checks
+pnpm pretty                 # Format code with Prettier
+
+# Storybook
+pnpm storybook              # Start Storybook dev server
+pnpm storybook:build        # Build Storybook for production
+```
+
+## IDE Setup (Optional)
+
+For the best development experience, configure your IDE with the provided settings:
+
+<Tabs>
+  <Tab title="VS Code">
+    Copy the example VS Code settings:
+    
+    ```bash
+    cp .vscode/settings.example.json .vscode/settings.json
+    ```
+    
+    This configures VS Code with recommended extensions and settings for the project.
+  </Tab>
+  
+  <Tab title="Zed">
+    Copy the example Zed settings:
+    
+    ```bash
+    cp .zed/settings.example.json .zed/settings.json
+    ```
+    
+    This configures Zed with optimal settings for Start UI [web] development.
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+Now that you have Start UI [web] running, here's what you can explore:
+
+<CardGroup cols={2}>
+  <Card title="Project Structure" icon="folder-tree" href="/project-structure">
+    Learn about the codebase organization and key directories
+  </Card>
+  
+  <Card title="Installation Guide" icon="wrench" href="/installation">
+    Detailed installation instructions and configuration options
+  </Card>
+  
+  <Card title="Authentication" icon="lock" href="/features/authentication">
+    Understand the authentication system and how to customize it
+  </Card>
+  
+  <Card title="Database" icon="database" href="/features/database">
+    Learn about Prisma, schema management, and migrations
+  </Card>
+</CardGroup>
+
+<Tip>
+  Start by exploring the existing features in the application, then check out the project structure to understand how everything is organized.
+</Tip>

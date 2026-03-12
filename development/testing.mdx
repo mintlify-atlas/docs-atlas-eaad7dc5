@@ -1,0 +1,316 @@
+---
+title: Testing
+description: Learn how to write and run unit and browser tests with Vitest
+---
+
+Start UI [web] uses [Vitest](https://vitest.dev/) for unit and browser testing, providing a fast and modern testing experience with built-in TypeScript support.
+
+## Test Configuration
+
+The testing setup is configured in `vitest.config.ts` with two separate test projects:
+
+```ts vitest.config.ts
+import react from '@vitejs/plugin-react';
+import { playwright } from '@vitest/browser-playwright';
+import path from 'node:path';
+import { defineConfig } from 'vitest/config';
+
+const resolve = (filePath: string) => path.resolve(__dirname, filePath);
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    projects: [
+      {
+        test: {
+          name: 'browser',
+          browser: {
+            enabled: true,
+            provider: playwright({
+              contextOptions: {
+                permissions: ['clipboard-write', 'clipboard-read'],
+              },
+            }),
+            instances: [{ browser: 'chromium' }],
+          },
+          include: ['src/**/*.browser.{test,spec}.?(c|m)[jt]s?(x)'],
+          setupFiles: [
+            resolve('src/tests/setup.base.ts'),
+            resolve('src/tests/setup.browser.ts'),
+          ],
+        },
+      },
+      {
+        test: {
+          name: 'unit',
+          environment: 'node',
+          include: ['src/**/*.unit.{test,spec}.?(c|m)[jt]s?(x)'],
+          setupFiles: [
+            resolve('src/tests/setup.base.ts'),
+            resolve('src/server/routers/test-setup.ts'),
+          ],
+        },
+      },
+    ],
+  },
+});
+```
+
+## Test Types
+
+Start UI [web] supports two types of tests:
+
+<CardGroup cols={2}>
+  <Card title="Unit Tests" icon="flask">
+    Run in Node.js environment for testing logic and utilities.
+    
+    Files: `*.unit.test.ts` or `*.unit.spec.ts`
+  </Card>
+  
+  <Card title="Browser Tests" icon="window">
+    Run in Chromium using Playwright for testing React components.
+    
+    Files: `*.browser.test.tsx` or `*.browser.spec.tsx`
+  </Card>
+</CardGroup>
+
+## Browser Testing with Vitest
+
+Browser tests use `@vitest/browser` with Playwright to test React components in a real browser environment.
+
+### Setup Files
+
+The browser test setup includes:
+
+```ts src/tests/setup.base.ts
+import '@/lib/dayjs/config';
+```
+
+```ts src/tests/setup.browser.ts
+import { afterEach } from 'vitest';
+import { cleanup } from 'vitest-browser-react';
+
+afterEach(cleanup);
+```
+
+### Test Utilities
+
+A custom render function wraps components with necessary providers:
+
+```tsx src/tests/utils.tsx
+import { ReactElement } from 'react';
+import { userEvent } from 'vitest/browser';
+import { ComponentRenderOptions, render } from 'vitest-browser-react';
+import { Providers } from '@/providers';
+
+const WithProviders = ({ children }: { children: React.ReactNode }) => {
+  return <Providers>{children}</Providers>;
+};
+
+const customRender = (
+  ui: ReactElement,
+  options?: Omit<ComponentRenderOptions, 'wrapper'>
+) => {
+  return render(ui, { wrapper: WithProviders, ...options });
+};
+
+export * from 'vitest/browser';
+export * from 'vitest-browser-react';
+
+export { customRender as render };
+export const setupUser = () => userEvent.setup();
+```
+
+## Writing Tests
+
+### Browser Component Test Example
+
+Here's a real example from the codebase:
+
+```tsx src/components/form/field-text/index.browser.spec.tsx
+import { expect, test, vi } from 'vitest';
+import { z } from 'zod';
+import { page, render, setupUser } from '@/tests/utils';
+import { FormField, FormFieldLabel } from '..';
+import { FormFieldController } from '../form-field-controller';
+import { FormMocked } from '../form-test-utils';
+
+test('update value', async () => {
+  const user = setupUser();
+  const mockedSubmit = vi.fn();
+
+  render(
+    <FormMocked
+      schema={z.object({ name: z.string() })}
+      useFormOptions={{ defaultValues: { name: '' } }}
+      onSubmit={mockedSubmit}
+    >
+      {({ form }) => (
+        <FormField>
+          <FormFieldLabel>Name</FormFieldLabel>
+          <FormFieldController type="text" control={form.control} name="name" />
+        </FormField>
+      )}
+    </FormMocked>
+  );
+  
+  const input = page.getByLabelText('Name').element() as HTMLInputElement;
+
+  await user.type(input, 'new value');
+  expect(input.value).toBe('new value');
+  await user.click(page.getByRole('button', { name: 'Submit' }));
+  expect(mockedSubmit).toHaveBeenCalledWith({ name: 'new value' });
+});
+```
+
+### Testing Checkbox Interactions
+
+```tsx src/components/form/field-checkbox/field-checkbox.browser.spec.tsx
+import { expect, test, vi } from 'vitest';
+import { z } from 'zod';
+import { page, render, setupUser } from '@/tests/utils';
+import { FormField, FormFieldController } from '..';
+import { FormMocked } from '../form-test-utils';
+
+const zFormSchema = () =>
+  z.object({
+    lovesBears: z.boolean().refine((val) => val === true, {
+      error: 'Please say you love bears.',
+    }),
+  });
+
+test('should select checkbox on button click', async () => {
+  const user = setupUser();
+  const mockedSubmit = vi.fn();
+
+  render(
+    <FormMocked
+      schema={zFormSchema()}
+      useFormOptions={{ defaultValues: { lovesBears: false } }}
+      onSubmit={mockedSubmit}
+    >
+      {({ form }) => (
+        <FormField>
+          <FormFieldController
+            type="checkbox"
+            control={form.control}
+            name="lovesBears"
+          >
+            I love bears
+          </FormFieldController>
+        </FormField>
+      )}
+    </FormMocked>
+  );
+
+  const checkbox = page.getByRole('checkbox', { name: 'I love bears' });
+
+  await expect.element(checkbox).not.toBeChecked();
+  await user.click(checkbox);
+  await expect.element(checkbox).toBeChecked();
+
+  await user.click(page.getByRole('button', { name: 'Submit' }));
+  expect(mockedSubmit).toHaveBeenCalledWith({ lovesBears: true });
+});
+```
+
+## Running Tests
+
+<Steps>
+  <Step title="Run all tests in headless mode">
+    ```bash
+    pnpm test
+    ```
+    
+    This runs all tests (both unit and browser) in headless Chromium.
+  </Step>
+  
+  <Step title="Run tests with UI">
+    ```bash
+    pnpm test:ui
+    ```
+    
+    Opens Vitest's interactive UI for debugging and watching tests.
+  </Step>
+  
+  <Step title="Run tests in CI mode">
+    ```bash
+    pnpm test:ci
+    ```
+    
+    Runs tests once without watch mode, suitable for continuous integration.
+  </Step>
+</Steps>
+
+## Test Scripts
+
+Available test commands from `package.json`:
+
+```json package.json
+{
+  "scripts": {
+    "test": "vitest --browser.headless",
+    "test:ci": "vitest run",
+    "test:ui": "vitest"
+  }
+}
+```
+
+<Note>
+  The `test` script runs browser tests in headless mode by default, which is faster and suitable for development.
+</Note>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Proper Naming" icon="tag">
+    Name unit tests with `.unit.test.ts` and browser tests with `.browser.spec.tsx` to ensure they run in the correct environment.
+  </Card>
+  
+  <Card title="Setup Users" icon="user">
+    Always use `setupUser()` for user interactions to ensure proper event handling and timing.
+  </Card>
+  
+  <Card title="Wrap with Providers" icon="layer-group">
+    Use the custom `render` function from `@/tests/utils` to ensure components have access to all necessary providers.
+  </Card>
+  
+  <Card title="Clean Up" icon="broom">
+    The setup files automatically clean up after each test using `afterEach(cleanup)`.
+  </Card>
+</CardGroup>
+
+## Debugging Tests
+
+<Tip>
+  Use `pnpm test:ui` to open Vitest's UI, which provides:
+  - Visual test runner
+  - Test filtering and search
+  - Real-time test execution
+  - Detailed error messages and stack traces
+</Tip>
+
+For browser tests, you can also:
+
+```ts
+// Add debugging breakpoints
+test('my test', async () => {
+  const user = setupUser();
+  render(<MyComponent />);
+  
+  // Pause execution for debugging
+  await page.screenshot();
+});
+```
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="E2E Testing" icon="browser" href="/development/e2e-testing">
+    Learn about end-to-end testing with Playwright
+  </Card>
+  
+  <Card title="Linting" icon="code" href="/development/linting">
+    Explore code quality tools and configuration
+  </Card>
+</CardGroup>

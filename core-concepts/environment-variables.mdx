@@ -1,0 +1,332 @@
+---
+title: "Environment Variables"
+description: "Type-safe environment variable management with @t3-oss/env-core"
+---
+
+## Overview
+
+Start UI [web] uses [@t3-oss/env-core](https://env.t3.gg/) to validate environment variables at build time, providing type safety and runtime validation.
+
+## Architecture
+
+Environment variables are split into two categories:
+
+- **Client Variables** (`VITE_*`) - Exposed to the browser
+- **Server Variables** - Only available on the server
+
+<Warning>
+Never prefix sensitive data with `VITE_` as it will be exposed to the browser!
+</Warning>
+
+## Client Environment Variables
+
+Defined in `src/env/client.ts`:
+
+```typescript src/env/client.ts
+import { createEnv } from '@t3-oss/env-core';
+import { z } from 'zod';
+
+export const envClient = createEnv({
+  clientPrefix: 'VITE_',
+  client: {
+    VITE_BASE_URL: z.url(),
+    VITE_IS_DEMO: z
+      .enum(['true', 'false'])
+      .optional()
+      .default('false')
+      .transform((v) => v === 'true'),
+    VITE_ENV_NAME: z
+      .string()
+      .optional()
+      .transform((value) => value ?? (isDev ? 'LOCAL' : undefined)),
+    VITE_ENV_EMOJI: z
+      .emoji()
+      .optional()
+      .transform((value) => value ?? (isDev ? '🚧' : undefined)),
+    VITE_ENV_COLOR: z
+      .string()
+      .optional()
+      .transform((value) => value ?? (isDev ? 'gold' : 'plum')),
+    VITE_S3_BUCKET_PUBLIC_URL: z.url(),
+  },
+  runtimeEnv: {
+    ...envMetaOrProcess,
+    VITE_BASE_URL: getBaseUrl(),
+  },
+  emptyStringAsUndefined: true,
+  skipValidation: !!envMetaOrProcess.SKIP_ENV_VALIDATION,
+});
+```
+
+### Using Client Variables
+
+```typescript
+import { envClient } from '@/env/client';
+
+function App() {
+  const baseUrl = envClient.VITE_BASE_URL;
+  const isDemo = envClient.VITE_IS_DEMO;
+  
+  return <div>Base URL: {baseUrl}</div>;
+}
+```
+
+## Server Environment Variables
+
+Defined in `src/env/server.ts`:
+
+```typescript src/env/server.ts
+import { createEnv } from '@t3-oss/env-core';
+import { z } from 'zod';
+
+export const envServer = createEnv({
+  server: {
+    DATABASE_URL: z.url(),
+    AUTH_SECRET: z.string(),
+    AUTH_SESSION_EXPIRATION_IN_SECONDS: z.coerce.number().int().default(2592000),
+    AUTH_SESSION_UPDATE_AGE_IN_SECONDS: z.coerce.number().int().default(86400),
+    
+    GITHUB_CLIENT_ID: z.string().optional(),
+    GITHUB_CLIENT_SECRET: z.string().optional(),
+    
+    EMAIL_SERVER: z.url(),
+    EMAIL_FROM: z.string(),
+    
+    LOGGER_LEVEL: z
+      .enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal'])
+      .default(isProd ? 'error' : 'info'),
+    LOGGER_PRETTY: z
+      .enum(['true', 'false'])
+      .default(isProd ? 'false' : 'true')
+      .transform((value) => value === 'true'),
+      
+    S3_ACCESS_KEY_ID: z.string(),
+    S3_SECRET_ACCESS_KEY: z.string(),
+    S3_BUCKET_NAME: z.string().default('default'),
+    S3_REGION: z.string().default('auto'),
+    S3_HOST: z.string(),
+    S3_SECURE: z.boolean().default(true),
+    S3_FORCE_PATH_STYLE: z.boolean().default(false),
+  },
+  runtimeEnv: process.env,
+  emptyStringAsUndefined: true,
+  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
+});
+```
+
+### Using Server Variables
+
+```typescript
+import { envServer } from '@/env/server';
+
+// Only use in server code!
+export async function connectDatabase() {
+  const connection = await createConnection({
+    url: envServer.DATABASE_URL,
+  });
+  return connection;
+}
+```
+
+## .env File Structure
+
+Create a `.env` file in the project root:
+
+```bash .env
+# Application
+VITE_BASE_URL=http://localhost:3000
+VITE_IS_DEMO=false
+
+# Environment Badge (optional)
+VITE_ENV_NAME=staging
+VITE_ENV_EMOJI=🔬
+VITE_ENV_COLOR=teal
+
+# Database
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/start-ui
+
+# Authentication
+AUTH_SECRET=your-secret-key-here
+AUTH_SESSION_EXPIRATION_IN_SECONDS=2592000
+AUTH_SESSION_UPDATE_AGE_IN_SECONDS=86400
+
+# OAuth Providers
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+
+# Email
+EMAIL_SERVER=smtp://localhost:1025
+EMAIL_FROM=noreply@example.com
+
+# S3 Storage
+VITE_S3_BUCKET_PUBLIC_URL=http://localhost:9000/default
+S3_ACCESS_KEY_ID=minioadmin
+S3_SECRET_ACCESS_KEY=minioadmin
+S3_BUCKET_NAME=default
+S3_REGION=auto
+S3_HOST=localhost:9000
+S3_SECURE=false
+S3_FORCE_PATH_STYLE=true
+
+# Logging
+LOGGER_LEVEL=info
+LOGGER_PRETTY=true
+```
+
+<Info>
+Copy `.env.example` to `.env` to get started with all required variables.
+</Info>
+
+## Environment-Specific Configuration
+
+### Development
+
+```bash .env.development
+VITE_BASE_URL=http://localhost:3000
+VITE_ENV_NAME=LOCAL
+VITE_ENV_EMOJI=🚧
+LOGGER_LEVEL=debug
+LOGGER_PRETTY=true
+```
+
+### Production
+
+```bash .env.production
+VITE_BASE_URL=https://yourdomain.com
+AUTH_SECRET=generate-secure-secret
+LOGGER_LEVEL=error
+LOGGER_PRETTY=false
+S3_SECURE=true
+```
+
+## Generating Secrets
+
+<Warning>
+Always generate a unique `AUTH_SECRET` for production!
+</Warning>
+
+Generate a secure random secret:
+
+```bash
+openssl rand -base64 32
+```
+
+or
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+## Validation at Build Time
+
+Environment variables are validated when you run:
+
+```bash
+pnpm dev
+pnpm build
+```
+
+If validation fails, you'll see detailed error messages:
+
+```
+❌ Invalid environment variables:
+{
+  VITE_BASE_URL: [ 'Invalid url' ],
+  AUTH_SECRET: [ 'Required' ]
+}
+```
+
+## Skip Validation
+
+For certain CI/CD scenarios, you can skip validation:
+
+```bash
+SKIP_ENV_VALIDATION=true pnpm build
+```
+
+<Warning>
+Only use `SKIP_ENV_VALIDATION` in CI environments where you're building without running the app.
+</Warning>
+
+## Environment Variable Reference
+
+### Application
+
+| Variable | Type | Required | Description |
+|----------|------|----------|-------------|
+| `VITE_BASE_URL` | URL | Yes | Application base URL |
+| `VITE_IS_DEMO` | boolean | No | Enable demo mode |
+| `VITE_ENV_NAME` | string | No | Environment name for badge |
+| `VITE_ENV_EMOJI` | emoji | No | Environment emoji for badge |
+| `VITE_ENV_COLOR` | string | No | Environment color for badge |
+
+### Database
+
+| Variable | Type | Required | Description |
+|----------|------|----------|-------------|
+| `DATABASE_URL` | URL | Yes | PostgreSQL connection string |
+
+### Authentication
+
+| Variable | Type | Required | Description |
+|----------|------|----------|-------------|
+| `AUTH_SECRET` | string | Yes | Secret key for session encryption |
+| `AUTH_SESSION_EXPIRATION_IN_SECONDS` | number | No | Session expiration (default: 30 days) |
+| `AUTH_SESSION_UPDATE_AGE_IN_SECONDS` | number | No | Session update interval (default: 1 day) |
+| `GITHUB_CLIENT_ID` | string | No | GitHub OAuth client ID |
+| `GITHUB_CLIENT_SECRET` | string | No | GitHub OAuth client secret |
+
+### Email
+
+| Variable | Type | Required | Description |
+|----------|------|----------|-------------|
+| `EMAIL_SERVER` | URL | Yes | SMTP server URL |
+| `EMAIL_FROM` | string | Yes | Sender email address |
+
+### Storage (S3)
+
+| Variable | Type | Required | Description |
+|----------|------|----------|-------------|
+| `VITE_S3_BUCKET_PUBLIC_URL` | URL | Yes | Public URL for S3 bucket |
+| `S3_ACCESS_KEY_ID` | string | Yes | S3 access key |
+| `S3_SECRET_ACCESS_KEY` | string | Yes | S3 secret key |
+| `S3_BUCKET_NAME` | string | No | S3 bucket name (default: 'default') |
+| `S3_REGION` | string | No | S3 region (default: 'auto') |
+| `S3_HOST` | string | Yes | S3 host URL |
+| `S3_SECURE` | boolean | No | Use HTTPS (default: true) |
+| `S3_FORCE_PATH_STYLE` | boolean | No | Force path-style URLs (default: false) |
+
+### Logging
+
+| Variable | Type | Required | Description |
+|----------|------|----------|-------------|
+| `LOGGER_LEVEL` | enum | No | Log level (default: 'info' in dev, 'error' in prod) |
+| `LOGGER_PRETTY` | boolean | No | Pretty print logs (default: true in dev) |
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Never Commit Secrets" icon="lock">
+    Add `.env` to `.gitignore` and use `.env.example` as a template
+  </Card>
+  <Card title="Validate Early" icon="circle-check">
+    Let @t3-oss/env-core catch misconfigurations at build time
+  </Card>
+  <Card title="Use Defaults" icon="gear">
+    Provide sensible defaults for non-sensitive variables
+  </Card>
+  <Card title="Document Variables" icon="file-text">
+    Keep `.env.example` up to date with all required variables
+  </Card>
+</CardGroup>
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Learn how to set up environment variables during installation
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/deployment/production">
+    Production environment variable configuration
+  </Card>
+</CardGroup>

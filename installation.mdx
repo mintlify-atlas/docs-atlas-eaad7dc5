@@ -1,0 +1,493 @@
+---
+title: Installation
+description: Detailed installation and setup instructions for Start UI [web]
+---
+
+# Installation
+
+This guide provides comprehensive installation instructions for Start UI [web], including manual setup, environment configuration, and development tools.
+
+## System Requirements
+
+Before installing Start UI [web], ensure your system meets these requirements:
+
+### Required Software
+
+<CardGroup cols={2}>
+  <Card title="Node.js" icon="node-js">
+    **Version:** ≥ 22.0.0
+    
+    [Download Node.js](https://nodejs.org)
+  </Card>
+  
+  <Card title="pnpm" icon="box">
+    **Package Manager**
+    
+    ```bash
+    npm install -g pnpm
+    ```
+  </Card>
+  
+  <Card title="Docker" icon="docker">
+    **Optional but recommended**
+    
+    [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+  </Card>
+  
+  <Card title="PostgreSQL" icon="database">
+    **Alternative to Docker**
+    
+    Version 14+ if not using Docker
+  </Card>
+</CardGroup>
+
+<Info>
+  Start UI [web] is configured to work with **pnpm** as the package manager. While other package managers may work, pnpm is recommended for optimal performance and disk space efficiency.
+</Info>
+
+## Quick Installation
+
+For a rapid setup, use the scaffold command:
+
+```bash
+pnpm create start-ui -t web myApp
+cd myApp
+```
+
+Then follow the [Quickstart Guide](/quickstart) for the remaining setup steps.
+
+## Manual Installation
+
+For more control over the installation process, follow these detailed steps:
+
+<Steps>
+  <Step title="Clone or download the repository">
+    If you're working with the source code directly:
+    
+    ```bash
+    git clone https://github.com/bearstudio/start-ui-web.git myApp
+    cd myApp
+    ```
+    
+    Or download the latest release from the [GitHub repository](https://github.com/bearstudio/start-ui-web).
+  </Step>
+
+  <Step title="Install dependencies">
+    Install all project dependencies using pnpm:
+    
+    ```bash
+    pnpm install
+    ```
+    
+    This command will:
+    - Install all dependencies from `package.json`
+    - Run post-install scripts
+    - Generate the Prisma Client
+    - Generate build information
+    
+    <Note>
+      The `postinstall` script automatically runs `gen:prisma` and `gen:build-info` to set up necessary generated files.
+    </Note>
+  </Step>
+
+  <Step title="Configure environment variables">
+    Copy the example environment file:
+    
+    ```bash
+    cp .env.example .env
+    ```
+    
+    See the [Environment Configuration](#environment-configuration) section below for detailed information about each variable.
+  </Step>
+
+  <Step title="Set up your IDE">
+    Configure your IDE for the best development experience:
+    
+    <Tabs>
+      <Tab title="VS Code">
+        ```bash
+        cp .vscode/settings.example.json .vscode/settings.json
+        ```
+        
+        Recommended VS Code extensions:
+        - ESLint
+        - Prettier
+        - Tailwind CSS IntelliSense
+        - Prisma
+        - TypeScript and JavaScript Language Features
+      </Tab>
+      
+      <Tab title="Zed">
+        ```bash
+        cp .zed/settings.example.json .zed/settings.json
+        ```
+        
+        The Zed configuration includes optimized settings for Start UI [web] development.
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Initialize services with Docker">
+    Start the required services using Docker Compose:
+    
+    ```bash
+    pnpm dk:init
+    ```
+    
+    This command starts three services:
+    
+    **PostgreSQL Database**
+    - Image: `postgres:16.1`
+    - Port: `5432` (configurable via `DOCKER_DATABASE_PORT`)
+    - Database: `startui`
+    - Credentials: See `.env` file
+    
+    **MinIO (S3-compatible storage)**
+    - Image: `minio/minio`
+    - API Port: `9000` (configurable via `DOCKER_MINIO_API_PORT`)
+    - UI Port: `9001` (configurable via `DOCKER_MINIO_UI_PORT`)
+    - Access UI: `http://localhost:9001`
+    - Credentials: `minioadmin` / `minioadmin`
+    
+    **Maildev (Email testing)**
+    - Image: `maildev/maildev:2.2.1`
+    - SMTP Port: `1025` (configurable via `DOCKER_MAILDEV_SMTP_PORT`)
+    - UI Port: `1080` (configurable via `DOCKER_MAILDEV_UI_PORT`)
+    - Access UI: `http://localhost:1080`
+  </Step>
+
+  <Step title="Initialize the database">
+    Push the Prisma schema to your database and seed it with example data:
+    
+    ```bash
+    pnpm db:init
+    ```
+    
+    This is equivalent to running:
+    
+    ```bash
+    pnpm db:push    # Push schema to database
+    pnpm db:seed    # Seed with example data
+    ```
+  </Step>
+
+  <Step title="Start the development server">
+    Launch the development server:
+    
+    ```bash
+    pnpm dev
+    ```
+    
+    The application will be available at `http://localhost:3000` (or the port specified in `VITE_PORT`).
+  </Step>
+</Steps>
+
+## Environment Configuration
+
+Start UI [web] uses environment variables for configuration. Here's a detailed overview of the available variables:
+
+### Application Settings
+
+```bash .env
+# Port for the development server
+VITE_PORT=3000
+
+# Base URL for the application
+VITE_BASE_URL="http://localhost:${VITE_PORT}"
+
+# Environment indicator (optional)
+VITE_ENV_NAME="LOCAL"
+VITE_ENV_EMOJI="🚧"
+VITE_ENV_COLOR="gold"
+
+# Demo mode (read-only, optional)
+VITE_IS_DEMO="false"
+```
+
+### Docker Configuration
+
+```bash .env
+# PostgreSQL settings
+DOCKER_DATABASE_PORT="5432"
+DOCKER_DATABASE_NAME="startui"
+DOCKER_DATABASE_USERNAME="startui"
+DOCKER_DATABASE_PASSWORD="startui"
+
+# MinIO settings
+DOCKER_MINIO_API_PORT="9000"
+DOCKER_MINIO_UI_PORT="9001"
+DOCKER_MINIO_USERNAME="minioadmin"
+DOCKER_MINIO_PASSWORD="minioadmin"
+
+# Maildev settings
+DOCKER_MAILDEV_SMTP_PORT="1025"
+DOCKER_MAILDEV_UI_PORT="1080"
+```
+
+### Database
+
+```bash .env
+# PostgreSQL connection string
+DATABASE_URL="postgres://${DOCKER_DATABASE_USERNAME}:${DOCKER_DATABASE_PASSWORD}@localhost:${DOCKER_DATABASE_PORT}/${DOCKER_DATABASE_NAME}"
+```
+
+<Tip>
+  If you're using a hosted database (e.g., Supabase, Railway, Neon), replace the entire `DATABASE_URL` with your connection string.
+</Tip>
+
+### Authentication
+
+```bash .env
+# Required: Secret for signing sessions
+AUTH_SECRET="REPLACE ME"
+
+# Optional: Session configuration
+AUTH_SESSION_EXPIRATION_IN_SECONDS=2592000  # 30 days
+AUTH_SESSION_UPDATE_AGE_IN_SECONDS=86400    # 1 day
+
+# Optional: For mobile app integration
+AUTH_TRUSTED_ORIGINS="start-ui-native://,start-ui-native://*"
+
+# Optional: Dynamic base URL hosts
+# AUTH_ALLOWED_HOSTS="*.vercel.app"
+```
+
+<Warning>
+  **Important:** Generate a secure `AUTH_SECRET` before deploying to production:
+  
+  ```bash
+  npx @better-auth/cli@latest secret
+  ```
+  
+  Never commit your production secrets to version control!
+</Warning>
+
+### OAuth Providers (Optional)
+
+```bash .env
+# GitHub OAuth
+GITHUB_CLIENT_ID="REPLACE ME"
+GITHUB_CLIENT_SECRET="REPLACE ME"
+```
+
+To set up GitHub OAuth:
+1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
+2. Create a new OAuth App
+3. Set the callback URL to: `http://localhost:3000/api/auth/callback/github`
+4. Copy the Client ID and Client Secret to your `.env` file
+
+### Email Configuration
+
+```bash .env
+# SMTP server connection
+EMAIL_SERVER="smtp://0.0.0.0:${DOCKER_MAILDEV_SMTP_PORT}"
+
+# From address for emails
+EMAIL_FROM="Start UI <noreply@example.com>"
+```
+
+<Info>
+  In development, Maildev catches all emails. In production, replace `EMAIL_SERVER` with your SMTP provider (e.g., SendGrid, AWS SES, Postmark).
+</Info>
+
+### File Storage (S3)
+
+```bash .env
+# S3-compatible storage configuration
+S3_BUCKET_NAME="default"
+S3_HOST="127.0.0.1:${DOCKER_MINIO_API_PORT}"
+S3_ACCESS_KEY_ID="startui-access-key"
+S3_SECRET_ACCESS_KEY="startui-secret-key"
+S3_SECURE=false
+S3_FORCE_PATH_STYLE=true
+VITE_S3_BUCKET_PUBLIC_URL="http://${S3_HOST}/${S3_BUCKET_NAME}"
+```
+
+### Logging
+
+```bash .env
+# Logger configuration
+LOGGER_LEVEL="info"      # Options: trace, debug, info, warn, error, fatal
+LOGGER_PRETTY="true"     # Pretty print logs in development
+```
+
+## Alternative Database Setup
+
+If you prefer not to use Docker, you can set up PostgreSQL manually:
+
+<Steps>
+  <Step title="Install PostgreSQL">
+    Install PostgreSQL 14 or higher on your system:
+    
+    - **macOS:** `brew install postgresql@16`
+    - **Ubuntu/Debian:** `apt install postgresql-16`
+    - **Windows:** [Download installer](https://www.postgresql.org/download/windows/)
+  </Step>
+
+  <Step title="Create a database">
+    Create a database for your application:
+    
+    ```bash
+    createdb startui
+    ```
+    
+    Or use a hosted database service:
+    - [Supabase](https://supabase.com/)
+    - [Neon](https://neon.tech/)
+    - [Railway](https://railway.app/)
+    - [Render](https://render.com/)
+  </Step>
+
+  <Step title="Update DATABASE_URL">
+    Update your `.env` file with your PostgreSQL connection string:
+    
+    ```bash .env
+    DATABASE_URL="postgresql://user:password@localhost:5432/startui"
+    ```
+  </Step>
+
+  <Step title="Push schema and seed data">
+    Initialize your database:
+    
+    ```bash
+    pnpm db:push
+    pnpm db:seed
+    ```
+  </Step>
+</Steps>
+
+## Docker Commands Reference
+
+Useful Docker commands for managing your development environment:
+
+```bash
+# Initialize and start all services (one-time setup)
+pnpm dk:init
+
+# Start existing containers
+pnpm dk:start
+
+# Stop containers
+pnpm dk:stop
+
+# Remove containers and volumes (clears all data)
+pnpm dk:clear
+
+# View container logs
+docker compose logs -f
+
+# View specific service logs
+docker compose logs -f postgres
+docker compose logs -f minio
+docker compose logs -f maildev
+```
+
+<Warning>
+  Running `pnpm dk:clear` will delete all data in your local database and file storage. Use with caution!
+</Warning>
+
+## Verifying Your Installation
+
+After installation, verify everything is working:
+
+<Steps>
+  <Step title="Check the application">
+    Visit `http://localhost:3000` and ensure the home page loads.
+  </Step>
+
+  <Step title="Test authentication">
+    Try logging in with the default admin user:
+    - Email: `admin@startui.com`
+    - Password: `admin`
+  </Step>
+
+  <Step title="Check development tools">
+    - Maildev: `http://localhost:1080`
+    - MinIO Console: `http://localhost:9001`
+    - API Docs: `http://localhost:3000/api/openapi/app`
+  </Step>
+
+  <Step title="Run tests">
+    Execute the test suite:
+    
+    ```bash
+    pnpm test:ci
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Port already in use">
+    If port 3000 (or any other port) is already in use, change the port in your `.env` file:
+    
+    ```bash .env
+    VITE_PORT=3001
+    ```
+    
+    Or for Docker services:
+    
+    ```bash .env
+    DOCKER_DATABASE_PORT="5433"
+    ```
+  </Accordion>
+
+  <Accordion title="Docker containers won't start">
+    1. Ensure Docker Desktop is running
+    2. Check if ports are available: `docker ps`
+    3. Try clearing and reinitializing: `pnpm dk:clear && pnpm dk:init`
+    4. Check Docker logs: `docker compose logs`
+  </Accordion>
+
+  <Accordion title="Database connection errors">
+    1. Verify `DATABASE_URL` in `.env` is correct
+    2. Ensure PostgreSQL is running: `docker compose ps`
+    3. Test connection: `pnpm db:ui`
+    4. Re-push schema: `pnpm db:push`
+  </Accordion>
+
+  <Accordion title="Prisma generation errors">
+    Regenerate the Prisma Client:
+    
+    ```bash
+    pnpm gen:prisma
+    ```
+    
+    If issues persist, clear Prisma cache:
+    
+    ```bash
+    rm -rf node_modules/.prisma
+    pnpm gen:prisma
+    ```
+  </Accordion>
+
+  <Accordion title="Module not found errors">
+    Clear dependencies and reinstall:
+    
+    ```bash
+    rm -rf node_modules pnpm-lock.yaml
+    pnpm install
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Project Structure" icon="folder-tree" href="/project-structure">
+    Explore how the codebase is organized
+  </Card>
+  
+  <Card title="Authentication" icon="lock" href="/features/authentication">
+    Learn about the authentication system
+  </Card>
+  
+  <Card title="Database" icon="database" href="/features/database">
+    Work with Prisma and your database
+  </Card>
+  
+  <Card title="Deployment" icon="rocket" href="/deployment/building">
+    Deploy your application to production
+  </Card>
+</CardGroup>

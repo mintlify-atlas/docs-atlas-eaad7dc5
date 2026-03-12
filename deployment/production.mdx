@@ -1,0 +1,518 @@
+---
+title: Production Deployment
+description: Deploy Start UI [web] to production with best practices and optimization
+---
+
+This guide covers deploying Start UI [web] to production environments with proper configuration, security, and performance considerations.
+
+## Production Build Process
+
+Follow these steps to prepare your application for production deployment:
+
+<Steps>
+
+<Step title="Install dependencies">
+```bash
+pnpm install
+```
+
+<Info>
+Ensure you're using Node.js version 22 or higher as specified in `package.json:7-9`.
+</Info>
+</Step>
+
+<Step title="Build Storybook (Optional)">
+If you want to deploy the component library:
+
+```bash
+pnpm storybook:build
+```
+
+This builds Storybook and places it in `public/storybook`, making it accessible at `/storybook` in production.
+
+<Warning>
+Only include Storybook in production if you want to expose your component documentation. For most applications, this should be skipped or deployed separately.
+</Warning>
+</Step>
+
+<Step title="Build the application">
+```bash
+pnpm build
+```
+
+This command (`package.json:15`):
+- Sets `NODE_ENV=production`
+- Validates environment variables
+- Generates build information
+- Creates optimized production bundles
+- Outputs to `.output/` directory
+</Step>
+
+<Step title="Start the production server">
+```bash
+pnpm start
+```
+
+This runs the built application using Node.js (`package.json:16`):
+
+```json
+"start": "dotenv -- node .output/server/index.mjs"
+```
+</Step>
+
+</Steps>
+
+## Environment Variables Checklist
+
+### Required Variables
+
+Ensure all required environment variables are set in your production environment:
+
+#### Application Settings
+
+```bash
+# Port configuration
+VITE_PORT=3000
+
+# Base URL (use your production domain)
+VITE_BASE_URL="https://your-domain.com"
+```
+
+#### Database
+
+```bash
+# PostgreSQL connection string
+DATABASE_URL="postgres://username:password@host:port/database"
+```
+
+<Warning>
+Use a managed PostgreSQL service in production (AWS RDS, Supabase, PlanetScale, etc.). Never use the Docker database configuration from development.
+</Warning>
+
+#### Authentication
+
+```bash
+# Generate with: npx @better-auth/cli@latest secret
+AUTH_SECRET="your-production-secret-here"
+
+# Optional: Restrict allowed hosts for dynamic base URL
+AUTH_ALLOWED_HOSTS="*.vercel.app,*.your-domain.com"
+
+# Session configuration
+AUTH_SESSION_EXPIRATION_IN_SECONDS=2592000  # 30 days
+AUTH_SESSION_UPDATE_AGE_IN_SECONDS=86400    # 1 day
+
+# Mobile app support (if applicable)
+AUTH_TRUSTED_ORIGINS="start-ui-native://,start-ui-native://*"
+```
+
+<Note>
+The `AUTH_SECRET` should be a strong, random string. Generate it using the Better Auth CLI command.
+</Note>
+
+#### OAuth Providers (if using GitHub)
+
+```bash
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+```
+
+#### Object Storage (S3)
+
+```bash
+S3_BUCKET_NAME="your-production-bucket"
+S3_HOST="s3.amazonaws.com"  # Or your S3 provider
+S3_ACCESS_KEY_ID="your-access-key"
+S3_SECRET_ACCESS_KEY="your-secret-key"
+S3_SECURE=true
+S3_FORCE_PATH_STYLE=false
+VITE_S3_BUCKET_PUBLIC_URL="https://your-bucket.s3.amazonaws.com"
+```
+
+<Tip>
+Use managed S3 services like AWS S3, Cloudflare R2, or DigitalOcean Spaces for production file storage.
+</Tip>
+
+#### Email
+
+```bash
+# SMTP server for sending emails
+EMAIL_SERVER="smtp://username:password@smtp.sendgrid.net:587"
+EMAIL_FROM="Your App <noreply@your-domain.com>"
+```
+
+<Warning>
+Never use Maildev in production. Use a transactional email service like SendGrid, Postmark, AWS SES, or Mailgun.
+</Warning>
+
+#### Logging
+
+```bash
+LOGGER_LEVEL="info"      # Use "info" or "warn" in production
+LOGGER_PRETTY="false"    # Set to false for JSON logs in production
+```
+
+### Optional Variables
+
+#### Environment Badge
+
+Show environment information in the UI (`.env.example:29-32`):
+
+```bash
+VITE_ENV_NAME="STAGING"  # Or "PRODUCTION"
+VITE_ENV_EMOJI="🚀"
+VITE_ENV_COLOR="blue"
+```
+
+#### Demo Mode
+
+```bash
+VITE_IS_DEMO="false"  # Set to true for read-only demo deployments
+```
+
+## Database Migrations
+
+Before starting your production server, ensure your database schema is up to date.
+
+### Initial Setup
+
+```bash
+# Push the schema to your database
+pnpm db:push
+
+# Optionally seed the database
+pnpm db:seed
+```
+
+<Note>
+The `db:push` command (`package.json:40`) runs `prisma db push` which synchronizes your Prisma schema with the database.
+</Note>
+
+### Schema Updates
+
+For production environments, consider using Prisma Migrate instead of `db push`:
+
+```bash
+# Create a migration
+pnpx prisma migrate dev --name your_migration_name
+
+# Apply migrations in production
+pnpx prisma migrate deploy
+```
+
+<Warning>
+`prisma db push` is suitable for development and prototyping. For production, use `prisma migrate deploy` to apply versioned migrations safely.
+</Warning>
+
+## Deployment Platforms
+
+### Vercel
+
+Start UI [web] works well with Vercel:
+
+1. Connect your GitHub repository
+2. Configure environment variables in Vercel dashboard
+3. Set build command: `pnpm build`
+4. Set output directory: `.output/public`
+5. Set install command: `pnpm install`
+
+<Info>
+Vercel automatically detects the Vite configuration and optimizes the deployment.
+</Info>
+
+### Netlify
+
+Deploy to Netlify:
+
+1. Connect your repository
+2. Build command: `pnpm build`
+3. Publish directory: `.output/public`
+4. Add environment variables in Netlify UI
+
+### Railway
+
+Deploy to Railway:
+
+1. Create a new project from GitHub repo
+2. Add environment variables
+3. Railway auto-detects the Node.js app
+4. Set start command: `pnpm start`
+
+### Docker
+
+While the provided `docker-compose.yml` is for development, you can create a production Dockerfile:
+
+```dockerfile Dockerfile
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Copy package files
+COPY package.json pnpm-lock.yaml ./
+COPY prisma ./prisma/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Generate Prisma client and build
+RUN pnpm gen:prisma
+RUN pnpm build
+
+# Production stage
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Copy package files for production dependencies
+COPY package.json pnpm-lock.yaml ./
+
+# Install production dependencies only
+RUN pnpm install --prod --frozen-lockfile
+
+# Copy built application from builder
+COPY --from=builder /app/.output ./.output
+COPY --from=builder /app/prisma ./prisma
+
+# Expose port
+EXPOSE 3000
+
+# Start the application
+CMD ["pnpm", "start"]
+```
+
+<Warning>
+This Dockerfile is a starting point. Customize it based on your specific needs and security requirements.
+</Warning>
+
+### Self-Hosted (VPS)
+
+Deploy to your own server:
+
+1. Clone your repository
+2. Install Node.js 22+ and pnpm
+3. Copy `.env.example` to `.env` and configure
+4. Run production build steps
+5. Use PM2 or systemd to manage the process
+
+**Using PM2:**
+
+```bash
+# Install PM2 globally
+npm install -g pm2
+
+# Start the application
+pm2 start .output/server/index.mjs --name "start-ui"
+
+# Save PM2 configuration
+pm2 save
+
+# Setup PM2 to start on system boot
+pm2 startup
+```
+
+## Performance Considerations
+
+### Build Optimizations
+
+<CardGroup cols={2}>
+  <Card title="React Compiler" icon="react">
+    Automatically enabled via `babel-plugin-react-compiler` for optimized React rendering
+  </Card>
+  <Card title="Code Splitting" icon="scissors">
+    TanStack Start automatically splits code by routes for optimal loading
+  </Card>
+  <Card title="Asset Optimization" icon="image">
+    Vite optimizes images, fonts, and other assets during build
+  </Card>
+  <Card title="Tree Shaking" icon="tree">
+    Unused code is automatically removed from production bundles
+  </Card>
+</CardGroup>
+
+### Runtime Performance
+
+- **Server-Side Rendering**: TanStack Start provides SSR out of the box
+- **Database Connection Pooling**: Configure Prisma connection pooling for better performance
+- **Caching**: Implement caching strategies for API responses
+- **CDN**: Serve static assets from a CDN
+
+### Monitoring
+
+Consider integrating monitoring tools:
+
+- **Error tracking**: Sentry, Rollbar, or Bugsnag
+- **Performance monitoring**: New Relic, DataDog, or Vercel Analytics
+- **Logging**: Structured JSON logs (set `LOGGER_PRETTY=false`)
+
+## Security Checklist
+
+<Steps>
+
+<Step title="Environment variables">
+- Never commit `.env` files to version control
+- Use strong, random values for `AUTH_SECRET`
+- Rotate secrets regularly
+- Use environment variable management (Vercel, Railway, AWS Secrets Manager)
+</Step>
+
+<Step title="Database">
+- Use managed database services with automatic backups
+- Enable SSL/TLS for database connections
+- Configure appropriate connection limits
+- Regularly update Prisma and PostgreSQL
+</Step>
+
+<Step title="Authentication">
+- Configure `AUTH_ALLOWED_HOSTS` to restrict dynamic base URLs
+- Use HTTPS in production (set `VITE_BASE_URL` with `https://`)
+- Enable rate limiting on authentication endpoints
+- Review OAuth application settings
+</Step>
+
+<Step title="Dependencies">
+- Regularly update dependencies: `pnpm update`
+- Audit for vulnerabilities: `pnpm audit`
+- Review and approve dependency updates
+</Step>
+
+</Steps>
+
+## Deployment Checklist
+
+Before deploying to production:
+
+- [ ] All environment variables configured
+- [ ] `AUTH_SECRET` generated and set
+- [ ] Database connection tested
+- [ ] S3 bucket created and configured
+- [ ] Email service configured and tested
+- [ ] OAuth providers configured (if applicable)
+- [ ] Database migrations applied
+- [ ] Build succeeds without errors
+- [ ] TypeScript type checking passes: `pnpm lint:ts`
+- [ ] Linting passes: `pnpm lint`
+- [ ] Tests pass: `pnpm test:ci`
+- [ ] E2E tests pass: `pnpm e2e`
+- [ ] SSL/TLS certificate configured
+- [ ] Domain DNS configured
+- [ ] Error monitoring set up
+- [ ] Backup strategy implemented
+- [ ] Logging configured
+
+## Storybook Deployment
+
+If you included Storybook in your build (`pnpm storybook:build`), it will be accessible at:
+
+```
+https://your-domain.com/storybook
+```
+
+The build process (`package.json:21`) moves the static Storybook build to `public/storybook`:
+
+```json
+"storybook:build": "storybook build && mv ./storybook-static ./public/storybook"
+```
+
+<Note>
+Storybook is served as static files and doesn't require server-side rendering.
+</Note>
+
+## Troubleshooting Production Issues
+
+### Build fails
+
+1. Check Node.js version: `node --version` (should be 22+)
+2. Clear node_modules and reinstall: `rm -rf node_modules && pnpm install`
+3. Check for TypeScript errors: `pnpm lint:ts`
+4. Verify all environment variables are set
+
+### Application won't start
+
+1. Check environment variables are loaded
+2. Verify database connection: `DATABASE_URL`
+3. Check server logs for errors
+4. Ensure all required services are accessible (database, S3, email)
+
+### Database connection errors
+
+1. Verify `DATABASE_URL` format and credentials
+2. Check if database server is accessible
+3. Ensure IP address is whitelisted (for managed databases)
+4. Verify SSL/TLS settings if required
+
+### Performance issues
+
+1. Enable production logging: `LOGGER_PRETTY=false`
+2. Monitor database query performance
+3. Check for N+1 query problems
+4. Implement database connection pooling
+5. Consider caching strategies
+
+## Continuous Deployment
+
+Set up CI/CD for automatic deployments:
+
+**GitHub Actions example:**
+
+```yaml .github/workflows/deploy.yml
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Run linting
+        run: pnpm lint
+      
+      - name: Run tests
+        run: pnpm test:ci
+      
+      - name: Build application
+        run: pnpm build
+        env:
+          # Add all required env vars from secrets
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          # ... etc
+      
+      # Deploy step depends on your platform
+      # (Vercel, Netlify, Railway, etc.)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building" icon="hammer" href="/deployment/building">
+    Learn more about the build process and optimizations
+  </Card>
+  <Card title="Docker Setup" icon="docker" href="/deployment/docker">
+    Understand the development Docker configuration
+  </Card>
+</CardGroup>

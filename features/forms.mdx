@@ -1,0 +1,700 @@
+---
+title: Forms
+description: Learn how to build type-safe forms with React Hook Form, Zod validation, and custom field components
+---
+
+Start UI [web] provides a comprehensive form system built with [React Hook Form](https://react-hook-form.com/) and [Zod](https://zod.dev/) for type-safe validation.
+
+## Overview
+
+The form system includes:
+
+- **React Hook Form**: Performant forms with minimal re-renders
+- **Zod Validation**: Type-safe schema validation
+- **Custom Components**: Pre-built field components with consistent styling
+- **i18n Support**: Internationalized error messages
+- **Accessibility**: ARIA labels and keyboard navigation
+
+## Quick Start
+
+Here's a complete form example:
+
+```tsx
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import {
+  Form,
+  FormField,
+  FormFieldController,
+  FormFieldLabel,
+} from '@/components/form';
+import { Button } from '@/components/ui/button';
+
+// Define schema
+const schema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email'),
+});
+
+type FormData = z.infer<typeof schema>;
+
+export function MyForm() {
+  const form = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      name: '',
+      email: '',
+    },
+  });
+
+  const onSubmit = (data: FormData) => {
+    console.log(data);
+  };
+
+  return (
+    <Form {...form} onSubmit={onSubmit}>
+      <FormField>
+        <FormFieldLabel>Name</FormFieldLabel>
+        <FormFieldController
+          control={form.control}
+          type="text"
+          name="name"
+        />
+      </FormField>
+
+      <FormField>
+        <FormFieldLabel>Email</FormFieldLabel>
+        <FormFieldController
+          control={form.control}
+          type="email"
+          name="email"
+        />
+      </FormField>
+
+      <Button type="submit" loading={form.formState.isSubmitting}>
+        Submit
+      </Button>
+    </Form>
+  );
+}
+```
+
+## Zod Schemas
+
+Define validation schemas with Zod:
+
+```ts src/features/auth/schema.ts
+import { t } from 'i18next';
+import { z } from 'zod';
+import { zu } from '@/lib/zod/zod-utils';
+
+export const zFormFieldsLogin = () =>
+  z.object({
+    email: zu.fieldText.required().pipe(
+      z.email({
+        error: (issue) =>
+          issue.input
+            ? t('auth:common.email.invalid')
+            : t('auth:common.email.required'),
+      })
+    ),
+  });
+
+export type FormFieldsLogin = z.infer<ReturnType<typeof zFormFieldsLogin>>;
+```
+
+### Common Validation Patterns
+
+```ts
+// Required text field
+const name = zu.fieldText.required();
+
+// Email with custom error
+const email = z
+  .string()
+  .min(1, 'Email is required')
+  .email('Invalid email');
+
+// Number with range
+const age = z
+  .number()
+  .min(18, 'Must be 18 or older')
+  .max(120, 'Invalid age');
+
+// String length validation
+const otp = z
+  .string()
+  .length(6, 'Code must be 6 characters');
+
+// Optional field
+const publisher = z.string().optional();
+
+// Enum/Select
+const role = z.enum(['user', 'admin']);
+
+// Array of values
+const tags = z.array(z.string()).min(1, 'At least one tag required');
+
+// Date validation
+const birthdate = z.date({
+  required_error: 'Birthdate is required',
+});
+```
+
+## Form Components
+
+Start UI provides pre-built form field components:
+
+### Available Field Types
+
+```ts src/components/form/_fields.tsx
+export const fieldComponents = {
+  text: FieldText,
+  textarea: FieldTextarea,
+  email: FieldText,
+  tel: FieldText,
+  select: FieldSelect,
+  combobox: FieldCombobox,
+  'combobox-multiple': FieldComboboxMultiple,
+  number: FieldNumber,
+  otp: FieldOtp,
+  date: FieldDate,
+  checkbox: FieldCheckbox,
+  'checkbox-group': FieldCheckboxGroup,
+  'radio-group': FieldRadioGroup,
+} as const;
+```
+
+### Text Input
+
+```tsx
+<FormField>
+  <FormFieldLabel>Name</FormFieldLabel>
+  <FormFieldController
+    control={form.control}
+    type="text"
+    name="name"
+    placeholder="Enter your name"
+  />
+</FormField>
+```
+
+### Textarea
+
+```tsx
+<FormField>
+  <FormFieldLabel>Description</FormFieldLabel>
+  <FormFieldController
+    control={form.control}
+    type="textarea"
+    name="description"
+    placeholder="Enter description"
+  />
+</FormField>
+```
+
+### Select
+
+```tsx
+<FormField>
+  <FormFieldLabel>Genre</FormFieldLabel>
+  <FormFieldController
+    control={form.control}
+    type="select"
+    name="genreId"
+    placeholder="Select a genre"
+    options={[
+      { value: '1', label: 'Fantasy' },
+      { value: '2', label: 'Science Fiction' },
+    ]}
+  />
+</FormField>
+```
+
+### Combobox (Searchable Select)
+
+```tsx
+<FormField>
+  <FormFieldLabel>Author</FormFieldLabel>
+  <FormFieldController
+    control={form.control}
+    type="combobox"
+    name="author"
+    placeholder="Search authors..."
+    options={[
+      { value: 'tolkien', label: 'J.R.R. Tolkien' },
+      { value: 'rowling', label: 'J.K. Rowling' },
+    ]}
+  />
+</FormField>
+```
+
+### Date Picker
+
+```tsx
+<FormField>
+  <FormFieldLabel>Publication Date</FormFieldLabel>
+  <FormFieldController
+    control={form.control}
+    type="date"
+    name="publishedAt"
+  />
+</FormField>
+```
+
+### Checkbox
+
+```tsx
+<FormField>
+  <FormFieldController
+    control={form.control}
+    type="checkbox"
+    name="acceptTerms"
+    label="I accept the terms and conditions"
+  />
+</FormField>
+```
+
+### Number Input
+
+```tsx
+<FormField>
+  <FormFieldLabel>Pages</FormFieldLabel>
+  <FormFieldController
+    control={form.control}
+    type="number"
+    name="pages"
+    min={1}
+    max={10000}
+  />
+</FormField>
+```
+
+### OTP Input
+
+```tsx
+<FormField>
+  <FormFieldLabel>Verification Code</FormFieldLabel>
+  <FormFieldController
+    control={form.control}
+    type="otp"
+    name="otp"
+  />
+</FormField>
+```
+
+## Real-World Examples
+
+### Login Form
+
+```tsx src/features/auth/page-login.tsx
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+
+const form = useForm({
+  mode: 'onSubmit',
+  resolver: zodResolver(zFormFieldsLogin()),
+  defaultValues: {
+    email: '',
+  },
+});
+
+const submitHandler: SubmitHandler<FormFieldsLogin> = async ({ email }) => {
+  const result = await authClient.emailOtp.sendVerificationOtp({
+    email,
+    type: 'sign-in',
+  });
+
+  if (result.error) {
+    toast.error(t(`auth:errorCode.${result.error.code}`));
+    return;
+  }
+
+  router.navigate({
+    to: '/login/verify',
+    search: { email },
+  });
+};
+
+return (
+  <Form {...form} onSubmit={submitHandler}>
+    <FormField>
+      <FormFieldLabel className="sr-only">
+        {t('auth:common.email.label')}
+      </FormFieldLabel>
+      <FormFieldController
+        type="email"
+        control={form.control}
+        name="email"
+        size="lg"
+        placeholder={t('auth:common.email.label')}
+      />
+    </FormField>
+    <Button
+      loading={form.formState.isSubmitting}
+      type="submit"
+      size="lg"
+    >
+      {t('auth:pageLogin.loginWithEmail')}
+    </Button>
+  </Form>
+);
+```
+
+### Form with Drawer
+
+```tsx src/features/account/change-name-drawer.tsx
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useMutation } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+
+export const ChangeNameDrawer = ({ children }) => {
+  const [open, setOpen] = useState(false);
+  const session = authClient.useSession();
+  
+  const form = useForm<FormFieldsAccountUpdateName>({
+    resolver: zodResolver(zFormFieldsAccountUpdateName()),
+    values: {
+      name: session.data?.user.name ?? '',
+    },
+  });
+
+  const updateUser = useMutation(
+    orpc.account.updateInfo.mutationOptions({
+      onSuccess: async () => {
+        await session.refetch();
+        toast.success(t('account:changeNameDrawer.successMessage'));
+        form.reset();
+        setOpen(false);
+      },
+      onError: () => toast.error(t('account:changeNameDrawer.errorMessage')),
+    })
+  );
+
+  return (
+    <ResponsiveDrawer
+      open={open}
+      onOpenChange={(isOpen) => {
+        setOpen(isOpen);
+        form.reset();
+      }}
+    >
+      <ResponsiveDrawerTrigger render={children} />
+      <ResponsiveDrawerContent>
+        <Form
+          {...form}
+          onSubmit={({ name }) => updateUser.mutate({ name })}
+        >
+          <ResponsiveDrawerHeader>
+            <ResponsiveDrawerTitle>
+              {t('account:changeNameDrawer.title')}
+            </ResponsiveDrawerTitle>
+          </ResponsiveDrawerHeader>
+          
+          <ResponsiveDrawerBody>
+            <FormField>
+              <FormFieldLabel className="sr-only">
+                {t('account:changeNameDrawer.label')}
+              </FormFieldLabel>
+              <FormFieldController
+                control={form.control}
+                type="text"
+                name="name"
+                size="lg"
+                autoFocus
+              />
+            </FormField>
+          </ResponsiveDrawerBody>
+          
+          <ResponsiveDrawerFooter>
+            <Button
+              type="submit"
+              loading={updateUser.isPending}
+            >
+              {t('account:changeNameDrawer.submitButton')}
+            </Button>
+          </ResponsiveDrawerFooter>
+        </Form>
+      </ResponsiveDrawerContent>
+    </ResponsiveDrawer>
+  );
+};
+```
+
+### Custom Field Component
+
+```tsx src/features/book/manager/form-book-cover.tsx
+import { useFormContext, useWatch } from 'react-hook-form';
+import { UploadButton } from '@/components/upload/upload-button';
+
+export const FormBookCover = () => {
+  const form = useFormContext<FormFieldsBook>();
+  const coverId = useWatch({
+    name: 'coverId',
+    control: form.control,
+  });
+
+  return (
+    <FormField>
+      <FormFieldController
+        control={form.control}
+        type="custom"
+        name="coverId"
+        render={({ field }) => (
+          <>
+            <div className="relative mb-2">
+              <BookCover coverId={coverId} />
+              <div className="absolute top-1/2 left-1/2">
+                <UploadButton
+                  uploadRoute="bookCover"
+                  onSuccess={(file) => field.onChange(file.objectInfo.key)}
+                  onError={() => toast.error('Upload failed')}
+                />
+                {field.value && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => field.onChange(undefined)}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                )}
+              </div>
+            </div>
+            <FormFieldError />
+          </>
+        )}
+      />
+    </FormField>
+  );
+};
+```
+
+## Form State
+
+### Form Validation Modes
+
+```tsx
+const form = useForm({
+  mode: 'onSubmit', // Validate on submit (default)
+  // mode: 'onChange', // Validate on every change
+  // mode: 'onBlur', // Validate on blur
+  // mode: 'onTouched', // Validate after first blur
+});
+```
+
+### Check Form State
+
+```tsx
+const { formState } = form;
+
+// Is form valid?
+const isValid = formState.isValid;
+
+// Is form submitting?
+const isSubmitting = formState.isSubmitting;
+
+// Was form submitted?
+const isSubmitted = formState.isSubmitted;
+
+// Are there errors?
+const hasErrors = Object.keys(formState.errors).length > 0;
+
+// Is field dirty (changed)?
+const isDirty = formState.dirtyFields.name;
+```
+
+### Watch Field Values
+
+```tsx
+import { useWatch } from 'react-hook-form';
+
+// Watch a single field
+const email = useWatch({
+  control: form.control,
+  name: 'email',
+});
+
+// Watch multiple fields
+const [name, email] = useWatch({
+  control: form.control,
+  name: ['name', 'email'],
+});
+```
+
+## Error Handling
+
+### Display Field Errors
+
+```tsx
+<FormField>
+  <FormFieldLabel>Email</FormFieldLabel>
+  <FormFieldController
+    control={form.control}
+    type="email"
+    name="email"
+  />
+  <FormFieldError /> {/* Automatically shows errors */}
+</FormField>
+```
+
+### Manual Error Setting
+
+```tsx
+const onSubmit = async (data: FormData) => {
+  const result = await submitData(data);
+  
+  if (result.error) {
+    // Set field error
+    form.setError('email', {
+      type: 'manual',
+      message: 'This email is already taken',
+    });
+    
+    // Or set form-level error
+    form.setError('root', {
+      type: 'manual',
+      message: 'Something went wrong',
+    });
+  }
+};
+```
+
+### Internationalized Errors
+
+```ts
+const schema = z.object({
+  email: z.string().email({
+    error: (issue) =>
+      issue.input
+        ? t('auth:common.email.invalid')
+        : t('auth:common.email.required'),
+  }),
+  name: z.string({
+    error: t('auth:common.name.required'),
+  }),
+});
+```
+
+## Advanced Patterns
+
+### Dynamic Fields
+
+```tsx
+import { useFieldArray } from 'react-hook-form';
+
+const { fields, append, remove } = useFieldArray({
+  control: form.control,
+  name: 'authors',
+});
+
+return (
+  <>
+    {fields.map((field, index) => (
+      <FormField key={field.id}>
+        <FormFieldController
+          control={form.control}
+          type="text"
+          name={`authors.${index}.name`}
+        />
+        <Button onClick={() => remove(index)}>Remove</Button>
+      </FormField>
+    ))}
+    <Button onClick={() => append({ name: '' })}>Add Author</Button>
+  </>
+);
+```
+
+### Conditional Fields
+
+```tsx
+const showPublisher = useWatch({
+  control: form.control,
+  name: 'hasPublisher',
+});
+
+return (
+  <>
+    <FormField>
+      <FormFieldController
+        control={form.control}
+        type="checkbox"
+        name="hasPublisher"
+        label="Has Publisher"
+      />
+    </FormField>
+
+    {showPublisher && (
+      <FormField>
+        <FormFieldLabel>Publisher</FormFieldLabel>
+        <FormFieldController
+          control={form.control}
+          type="text"
+          name="publisher"
+        />
+      </FormField>
+    )}
+  </>
+);
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Define Schemas Separately" icon="file-code">
+    Keep Zod schemas in separate files for reusability and testing.
+  </Card>
+
+  <Card title="Use TypeScript Inference" icon="wand-magic-sparkles">
+    Let Zod infer types with `z.infer<typeof schema>` for type safety.
+  </Card>
+
+  <Card title="Validate Early" icon="shield-check">
+    Use client-side validation to provide instant feedback to users.
+  </Card>
+
+  <Card title="Handle Loading States" icon="spinner">
+    Always show loading indicators during form submission.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Form not validating">
+    Ensure you've passed the `resolver` to `useForm`:
+    
+    ```tsx
+    const form = useForm({
+      resolver: zodResolver(schema),
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Errors not displaying">
+    Make sure you're using `<FormFieldError />` or accessing `formState.errors`:
+    
+    ```tsx
+    <FormFieldError />
+    {/* or */}
+    {form.formState.errors.email?.message}
+    ```
+  </Accordion>
+
+  <Accordion title="Values not updating">
+    Use `watch` or `useWatch` to track field changes:
+    
+    ```tsx
+    const value = useWatch({ control: form.control, name: 'field' });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Learn about [File Uploads](/features/file-uploads) in forms
+- Configure [Internationalization](/features/internationalization) for form labels
+- Set up [Database](/features/database) operations with form data

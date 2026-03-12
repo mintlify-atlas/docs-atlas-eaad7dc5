@@ -1,0 +1,462 @@
+---
+title: Authentication
+description: Learn how to implement authentication with Better Auth, including email OTP, social providers, and protected routes
+---
+
+Start UI [web] uses [Better Auth](https://better-auth.com) for authentication, providing a flexible and secure authentication system with support for multiple providers.
+
+## Overview
+
+The authentication system includes:
+
+- **Email OTP Authentication**: Passwordless login with one-time codes
+- **Social Providers**: GitHub OAuth integration (extensible to other providers)
+- **Session Management**: Secure session handling with configurable expiration
+- **Protected Routes**: Role-based access control with permissions
+- **Onboarding Flow**: First-time user setup
+
+## Configuration
+
+Better Auth is configured in `src/server/auth.tsx`:
+
+```tsx src/server/auth.tsx
+import { betterAuth } from 'better-auth';
+import { prismaAdapter } from 'better-auth/adapters/prisma';
+import { admin, emailOTP, openAPI } from 'better-auth/plugins';
+
+export const auth = betterAuth({
+  baseURL: {
+    allowedHosts: [
+      new URL(envClient.VITE_BASE_URL).host,
+      ...(envServer.AUTH_ALLOWED_HOSTS ?? []),
+    ],
+  },
+  session: {
+    expiresIn: envServer.AUTH_SESSION_EXPIRATION_IN_SECONDS,
+    updateAge: envServer.AUTH_SESSION_UPDATE_AGE_IN_SECONDS,
+  },
+  database: prismaAdapter(db, {
+    provider: 'postgresql',
+  }),
+  plugins: [
+    openAPI(),
+    admin({ ...permissions }),
+    emailOTP({
+      disableSignUp: !AUTH_SIGNUP_ENABLED,
+      expiresIn: AUTH_EMAIL_OTP_EXPIRATION_IN_MINUTES * 60,
+      async sendVerificationOTP({ email, otp, type }) {
+        await sendEmail({
+          to: email,
+          subject: i18n.t('emails:loginCode.subject'),
+          template: <TemplateLoginCode code={otp} />,
+        });
+      },
+    }),
+  ],
+});
+```
+
+### Environment Variables
+
+Configure authentication in your `.env` file:
+
+```bash .env
+# Authentication
+AUTH_SECRET="your-secret-key" # Generate with: npx @better-auth/cli@latest secret
+AUTH_SESSION_EXPIRATION_IN_SECONDS=2592000 # 30 days
+AUTH_SESSION_UPDATE_AGE_IN_SECONDS=86400 # 1 day
+
+# GitHub OAuth (optional)
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+```
+
+## Email OTP Login
+
+Passwordless authentication using one-time codes sent via email.
+
+### Login Flow
+
+<Steps>
+  <Step title="Request OTP">
+    User enters their email address:
+
+    ```tsx src/features/auth/page-login.tsx
+    const submitHandler: SubmitHandler<FormFieldsLogin> = async ({ email }) => {
+      const result = await authClient.emailOtp.sendVerificationOtp({
+        email,
+        type: 'sign-in',
+      });
+
+      if (result.error) {
+        toast.error(t(`auth:errorCode.${result.error.code}`));
+        return;
+      }
+
+      router.navigate({
+        to: '/login/verify',
+        search: { redirect: search.redirect, email },
+      });
+    };
+    ```
+  </Step>
+
+  <Step title="Verify OTP">
+    User enters the 6-digit code from their email:
+
+    ```tsx src/features/auth/page-login-verify.tsx
+    const result = await authClient.emailOtp.verifyEmail({
+      email,
+      otp,
+    });
+
+    if (result.error) {
+      toast.error(t(`auth:errorCode.${result.error.code}`));
+      return;
+    }
+
+    router.navigate({ to: redirect ?? '/' });
+    ```
+  </Step>
+
+  <Step title="Session Created">
+    Better Auth creates a session and redirects the user to the app.
+  </Step>
+</Steps>
+
+### Email Template
+
+Customize the OTP email template in `src/emails/templates/login-code.tsx`:
+
+```tsx src/emails/templates/login-code.tsx
+export const TemplateLoginCode = (props: {
+  language: string;
+  code: string;
+}) => {
+  i18n.changeLanguage(props.language);
+  return (
+    <EmailLayout preview={i18n.t('emails:loginCode.preview')}>
+      <Container style={styles.container}>
+        <Heading style={styles.h1}>{i18n.t('emails:loginCode.title')}</Heading>
+        <Text style={styles.code}>{props.code}</Text>
+        <Text style={styles.textMuted}>
+          {i18n.t('emails:loginCode.validityTime', {
+            expiration: AUTH_EMAIL_OTP_EXPIRATION_IN_MINUTES,
+          })}
+        </Text>
+      </Container>
+    </EmailLayout>
+  );
+};
+```
+
+## Social Authentication
+
+GitHub OAuth is configured as an example social provider:
+
+```tsx src/server/auth.tsx
+socialProviders: {
+  github: {
+    enabled: !!(envServer.GITHUB_CLIENT_ID && envServer.GITHUB_CLIENT_SECRET),
+    clientId: envServer.GITHUB_CLIENT_ID!,
+    clientSecret: envServer.GITHUB_CLIENT_SECRET!,
+    disableImplicitSignUp: !AUTH_SIGNUP_ENABLED,
+  },
+}
+```
+
+### GitHub OAuth Setup
+
+<Steps>
+  <Step title="Create GitHub OAuth App">
+    Go to [GitHub Developer Settings](https://github.com/settings/developers) and create a new OAuth App.
+  </Step>
+
+  <Step title="Configure Callback URL">
+    Set the callback URL to: `http://localhost:3000/api/auth/callback/github`
+  </Step>
+
+  <Step title="Add Credentials">
+    Copy the Client ID and Client Secret to your `.env` file.
+  </Step>
+</Steps>
+
+### Social Login Button
+
+```tsx src/features/auth/page-login.tsx
+const social = useMutation({
+  mutationFn: async (provider: 'github') => {
+    const response = await authClient.signIn.social({
+      provider,
+      callbackURL: search.redirect ?? '/',
+      errorCallbackURL: '/login/error',
+    });
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+    return response.data;
+  },
+});
+
+<Button onClick={() => social.mutate('github')}>
+  Login with GitHub
+</Button>
+```
+
+## Protected Routes
+
+Use the `GuardAuthenticated` component to protect routes:
+
+```tsx src/features/auth/guard-authenticated.tsx
+export const GuardAuthenticated = ({
+  children,
+  permissionApps,
+}: {
+  children?: ReactNode;
+  permissionApps?: Permission['apps'];
+}) => {
+  const session = authClient.useSession();
+
+  // Show loading state
+  if (session.isPending) {
+    return <Spinner full />;
+  }
+
+  // Redirect to login if not authenticated
+  if (!session.data?.user) {
+    router.navigate({
+      to: '/login',
+      search: { redirect: location.href },
+    });
+    return null;
+  }
+
+  // Show onboarding if not completed
+  if (!session.data.user.onboardedAt) {
+    return <PageOnboarding />;
+  }
+
+  // Check permissions
+  if (
+    permissionApps &&
+    !authClient.admin.checkRolePermission({
+      role: session.data.user.role,
+      permissions: { apps: permissionApps },
+    })
+  ) {
+    return <PageError type="403" />;
+  }
+
+  return <>{children}</>;
+};
+```
+
+### Usage in Routes
+
+```tsx
+export const Route = createFileRoute('/dashboard')({
+  component: () => (
+    <GuardAuthenticated permissionApps={['app']}>
+      <DashboardPage />
+    </GuardAuthenticated>
+  ),
+});
+```
+
+## Role-Based Access Control
+
+Define roles and permissions in `src/features/auth/permissions.ts`:
+
+```ts src/features/auth/permissions.ts
+const statement = {
+  ...defaultStatements,
+  account: ['read', 'update'],
+  apps: ['app', 'manager'],
+  book: ['read', 'create', 'update', 'delete'],
+  genre: ['read'],
+} as const;
+
+const ac = createAccessControl(statement);
+
+const user = ac.newRole({
+  account: ['update'],
+  apps: ['app'],
+  book: ['read'],
+  genre: ['read'],
+});
+
+const admin = ac.newRole({
+  ...adminAc.statements,
+  account: ['update'],
+  apps: ['app', 'manager'],
+  book: ['read', 'create', 'update', 'delete'],
+  genre: ['read'],
+});
+
+export const permissions = {
+  ac,
+  roles: { admin, user },
+};
+```
+
+### Check Permissions
+
+```tsx
+const canUpdateBook = authClient.admin.checkRolePermission({
+  role: user.role,
+  permissions: {
+    book: ['update'],
+  },
+});
+```
+
+## Session Management
+
+### Get Current Session
+
+```tsx
+import { authClient } from '@/features/auth/client';
+
+function MyComponent() {
+  const session = authClient.useSession();
+
+  if (session.isPending) return <Spinner />;
+  if (!session.data) return <LoginPrompt />;
+
+  return <div>Welcome, {session.data.user.name}!</div>;
+}
+```
+
+### Sign Out
+
+```tsx src/features/auth/confirm-signout.tsx
+const signOut = useMutation({
+  mutationFn: async () => {
+    await authClient.signOut();
+  },
+  onSuccess: () => {
+    router.navigate({ to: '/login' });
+  },
+});
+
+<Button onClick={() => signOut.mutate()}>
+  {t('auth:signOut.action')}
+</Button>
+```
+
+## Onboarding Flow
+
+First-time users are prompted to complete their profile:
+
+```tsx src/features/auth/page-onboarding.tsx
+const form = useForm({
+  resolver: zodResolver(zFormFieldsOnboarding()),
+  defaultValues: {
+    name: session.data?.user.name ?? '',
+  },
+});
+
+const submitHandler: SubmitHandler<FormFieldsOnboarding> = async ({ name }) => {
+  await authClient.user.update({ name });
+  await authClient.user.setOnboarded();
+  router.invalidate();
+};
+```
+
+<Note>
+After onboarding, the `onboardedAt` field is set, and users can access the full application.
+</Note>
+
+## Database Schema
+
+Better Auth uses these Prisma models:
+
+```prisma prisma/schema.prisma
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean
+  image         String?
+  role          UserRole?
+  onboardedAt   DateTime?
+  sessions      Session[]
+  accounts      Account[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always Use Guards" icon="shield">
+    Wrap protected routes with `GuardAuthenticated` to ensure authentication and authorization.
+  </Card>
+
+  <Card title="Handle Loading States" icon="spinner">
+    Check `session.isPending` before rendering authenticated content.
+  </Card>
+
+  <Card title="Secure Session Secrets" icon="key">
+    Use a strong `AUTH_SECRET` and never commit it to version control.
+  </Card>
+
+  <Card title="Configure Session Duration" icon="clock">
+    Adjust session expiration based on your security requirements.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="OTP emails not sending">
+    Check your email configuration in `.env`:
+    
+    ```bash
+    EMAIL_SERVER="smtp://0.0.0.0:1025"
+    EMAIL_FROM="Start UI <noreply@example.com>"
+    ```
+    
+    In development, emails are caught by MailDev at `http://localhost:1080`.
+  </Accordion>
+
+  <Accordion title="GitHub OAuth not working">
+    Verify:
+    1. GitHub OAuth app is configured correctly
+    2. Callback URL matches: `{VITE_BASE_URL}/api/auth/callback/github`
+    3. Client ID and Secret are correct in `.env`
+    4. OAuth app is not suspended
+  </Accordion>
+
+  <Accordion title="Session expires too quickly">
+    Increase session duration:
+    
+    ```bash
+    AUTH_SESSION_EXPIRATION_IN_SECONDS=2592000 # 30 days
+    AUTH_SESSION_UPDATE_AGE_IN_SECONDS=86400 # 1 day
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Learn about [Database](/features/database) integration with Prisma
+- Set up [Email](/features/email) templates for notifications
+- Configure [Internationalization](/features/internationalization) for multi-language auth

@@ -1,0 +1,434 @@
+---
+title: E2E Testing
+description: Learn how to write and run end-to-end tests with Playwright
+---
+
+Start UI [web] uses [Playwright](https://playwright.dev/) for end-to-end testing, providing reliable cross-browser testing capabilities.
+
+## Configuration
+
+Playwright is configured in `playwright.config.ts`:
+
+```ts playwright.config.ts
+import { defineConfig, devices } from '@playwright/test';
+import { DEFAULT_LANGUAGE_KEY } from '@/lib/i18n/constants';
+
+export default defineConfig({
+  testDir: './e2e',
+  /* Max time for the full CI tests */
+  globalTimeout: 15 * 60 * 1000,
+  /* Max test failure */
+  maxFailures: process.env.CI ? 1 : 0,
+  /* Run tests in files in parallel */
+  fullyParallel: true,
+  /* Fail the build on CI if you accidentally left test.only in the source code. */
+  forbidOnly: !!process.env.CI,
+  /* Retry on CI only */
+  retries: process.env.CI ? 2 : 0,
+  /* Opt out of parallel tests on CI. */
+  workers: process.env.CI ? 1 : undefined,
+  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
+  reporter: process.env.CI ? 'github' : 'html',
+  /* Shared settings for all the projects below. */
+  use: {
+    baseURL: process.env.VITE_BASE_URL,
+    /* Collect trace when retrying the failed test. */
+    trace: 'on-first-retry',
+  },
+  /* Increase the timeout to operate on Github Actions */
+  expect: { timeout: process.env.CI ? 10000 : undefined },
+  /* Configure projects for major browsers */
+  projects: [
+    {
+      name: 'setup',
+      testMatch: /.*\.setup\.ts/,
+      use: { locale: DEFAULT_LANGUAGE_KEY },
+    },
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'], locale: DEFAULT_LANGUAGE_KEY },
+      dependencies: process.env.CI ? ['setup'] : [],
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'], locale: DEFAULT_LANGUAGE_KEY },
+      dependencies: process.env.CI ? ['setup'] : [],
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'], locale: DEFAULT_LANGUAGE_KEY },
+      dependencies: process.env.CI ? ['setup'] : [],
+    },
+  ],
+  /* Run your local dev server before starting the tests */
+  webServer: {
+    command: 'pnpm dev',
+    url: process.env.VITE_BASE_URL,
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
+## Test Structure
+
+E2E tests are organized in the `e2e/` directory:
+
+```
+e2e/
+├── setup/
+│   └── auth.setup.ts       # Authentication setup for tests
+├── utils/
+│   ├── index.ts           # Test utilities export
+│   ├── page.ts            # Extended page utilities
+│   ├── types.ts           # Type definitions
+│   └── constants.ts       # Test constants
+├── login.spec.ts          # Login flow tests
+├── users.spec.ts          # User management tests
+└── api-schema.spec.ts     # API schema tests
+```
+
+## Test Setup and Contexts
+
+### Authentication Setup
+
+Start UI [web] uses Playwright's authentication setup to create authenticated sessions:
+
+```ts e2e/setup/auth.setup.ts
+import { expect } from '@playwright/test';
+import { test as setup } from 'e2e/utils';
+import {
+  ADMIN_EMAIL,
+  ADMIN_FILE,
+  USER_EMAIL,
+  USER_FILE,
+} from 'e2e/utils/constants';
+
+setup('authenticate as admin', async ({ page }) => {
+  await page.to('/login');
+  await page.login({ email: ADMIN_EMAIL });
+
+  await page.waitForURL('/manager');
+  await expect(page.getByTestId('layout-manager')).toBeVisible();
+
+  await page.context().storageState({ path: ADMIN_FILE });
+});
+
+setup('authenticate as user', async ({ page }) => {
+  await page.to('/login');
+  await page.login({ email: USER_EMAIL });
+
+  await page.waitForURL('/app');
+  await expect(page.getByTestId('layout-app')).toBeVisible();
+
+  await page.context().storageState({ path: USER_FILE });
+});
+```
+
+<Info>
+  This setup runs once before tests and saves authenticated browser states, allowing tests to skip the login process.
+</Info>
+
+### Extended Page Utilities
+
+Custom page utilities provide type-safe routing and authentication helpers:
+
+```ts e2e/utils/page.ts
+import { expect, Page } from '@playwright/test';
+import { CustomFixture } from 'e2e/utils/types';
+import { DEFAULT_LANGUAGE_KEY } from '@/lib/i18n/constants';
+import { FileRouteTypes } from '@/routeTree.gen';
+import locales from '@/locales';
+
+interface PageUtils {
+  /**
+   * Utility used to authenticate a user on the app
+   */
+  login: (input: { email: string; code?: string }) => Promise<void>;
+
+  /**
+   * Override of the `page.goto` method with typed routes from the app
+   */
+  to: (
+    url: FileRouteTypes['to'],
+    options?: Parameters<Page['goto']>[1]
+  ) => ReturnType<Page['goto']>;
+}
+
+export type ExtendedPage = { page: PageUtils };
+
+export const pageWithUtils: CustomFixture<Page & PageUtils> = async (
+  { page },
+  apply
+) => {
+  page.login = async function login(input: { email: string; code?: string }) {
+    const routeLogin = '/login' satisfies FileRouteTypes['to'];
+    const routeLoginVerify = '/login/verify' satisfies FileRouteTypes['to'];
+    await page.waitForURL(`**${routeLogin}**`);
+
+    await expect(
+      page.getByText(
+        locales[DEFAULT_LANGUAGE_KEY].auth[
+          AUTH_SIGNUP_ENABLED ? 'pageLoginWithSignUp' : 'pageLogin'
+        ].title,
+        { exact: true }
+      )
+    ).toBeVisible();
+
+    await page
+      .getByPlaceholder(locales[DEFAULT_LANGUAGE_KEY].auth.common.email.label)
+      .fill(input.email);
+
+    await page
+      .getByRole('button', {
+        name: locales[DEFAULT_LANGUAGE_KEY].auth[
+          AUTH_SIGNUP_ENABLED ? 'pageLoginWithSignUp' : 'pageLogin'
+        ].loginWithEmail,
+      })
+      .click();
+
+    await page.waitForURL(`**${routeLoginVerify}**`);
+    await page
+      .getByText(locales[DEFAULT_LANGUAGE_KEY].auth.common.otp.label)
+      .fill(input.code ?? AUTH_EMAIL_OTP_MOCKED);
+  };
+
+  page.to = page.goto;
+
+  await apply(page);
+};
+```
+
+### Custom Test Fixture
+
+The custom test extends Playwright's base test with utilities:
+
+```ts e2e/utils/index.ts
+import { test as base } from '@playwright/test';
+import { ExtendedPage, pageWithUtils } from 'e2e/utils/page';
+
+const test = base.extend<ExtendedPage>({
+  page: pageWithUtils,
+});
+
+export * from '@playwright/test';
+export { test };
+```
+
+## Writing Tests
+
+### Login Flow Test
+
+```ts e2e/login.spec.ts
+import { expect, test } from 'e2e/utils';
+import { ADMIN_EMAIL, USER_EMAIL } from 'e2e/utils/constants';
+
+test.describe('Login flow', () => {
+  test('Login as admin', async ({ page }) => {
+    await page.to('/login');
+    await page.login({ email: ADMIN_EMAIL });
+    await page.waitForURL('/manager');
+    await expect(page.getByTestId('layout-manager')).toBeVisible();
+  });
+
+  test('Login as user', async ({ page }) => {
+    await page.to('/login');
+    await page.login({ email: USER_EMAIL });
+    await page.waitForURL('/app');
+    await expect(page.getByTestId('layout-app')).toBeVisible();
+  });
+
+  test('Login with redirect', async ({ page }) => {
+    await page.to('/app');
+    await page.login({ email: ADMIN_EMAIL });
+    await page.waitForURL('/app');
+    await expect(page.getByTestId('layout-app')).toBeVisible();
+  });
+});
+```
+
+### User Management Tests
+
+```ts e2e/users.spec.ts
+import { expect, test } from 'e2e/utils';
+import { ADMIN_FILE, USER_FILE } from 'e2e/utils/constants';
+import { randomString } from 'remeda';
+import { DEFAULT_LANGUAGE_KEY } from '@/lib/i18n/constants';
+import locales from '@/locales';
+
+const t = locales[DEFAULT_LANGUAGE_KEY];
+
+test.describe('User management as user', () => {
+  test.use({ storageState: USER_FILE });
+
+  test('Should not have access', async ({ page }) => {
+    await page.to('/manager/users');
+
+    await expect(
+      page.getByText(t.components.pageError[403].message)
+    ).toBeVisible();
+  });
+});
+
+test.describe('User management as manager', () => {
+  test.use({ storageState: ADMIN_FILE });
+
+  test.beforeEach(async ({ page }) => {
+    await page.to('/manager/users');
+  });
+
+  test('Create a user', async ({ page }) => {
+    await page.getByText(t.user.manager.list.newButton).click();
+
+    const randomId = randomString(8);
+    const uniqueEmail = `new-user-${randomId}@user.com`;
+
+    await page.waitForURL('/manager/users/new');
+    await page.getByLabel(t.user.common.name.label).fill('New user');
+    await page.getByLabel(t.user.common.email.label).fill(uniqueEmail);
+    await page.getByText(t.user.manager.new.createButton.label).click();
+
+    await page.waitForURL('/manager/users');
+    await page
+      .getByPlaceholder(t.components.searchInput.placeholder)
+      .fill(`new-user-${randomId}`);
+    await expect(page.getByText(uniqueEmail)).toBeVisible();
+  });
+});
+```
+
+<Note>
+  Tests use `test.use({ storageState: ADMIN_FILE })` to reuse authenticated sessions created during setup.
+</Note>
+
+## Running Tests
+
+<Steps>
+  <Step title="Run setup only">
+    ```bash
+    pnpm e2e:setup
+    ```
+    
+    Creates authenticated browser states for admin and user roles.
+  </Step>
+  
+  <Step title="Run all E2E tests">
+    ```bash
+    pnpm e2e
+    ```
+    
+    Runs all tests in headless mode across Chromium, Firefox, and WebKit.
+  </Step>
+  
+  <Step title="Run tests with UI mode">
+    ```bash
+    pnpm e2e:ui
+    ```
+    
+    Opens Playwright's interactive UI for debugging and watching tests.
+  </Step>
+</Steps>
+
+## E2E Scripts
+
+Available E2E commands from `package.json`:
+
+```json package.json
+{
+  "scripts": {
+    "e2e:setup": "dotenv -- cross-env playwright test --project=setup",
+    "e2e": "dotenv -- cross-env playwright test",
+    "e2e:ui": "dotenv -- cross-env playwright test --ui"
+  }
+}
+```
+
+## Browser Configuration
+
+Tests run on multiple browsers:
+
+<CardGroup cols={3}>
+  <Card title="Chromium" icon="chrome">
+    Desktop Chrome configuration for Chromium-based browsers
+  </Card>
+  
+  <Card title="Firefox" icon="firefox">
+    Desktop Firefox configuration for Gecko engine
+  </Card>
+  
+  <Card title="WebKit" icon="safari">
+    Desktop Safari configuration for WebKit engine
+  </Card>
+</CardGroup>
+
+## CI/CD Integration
+
+The configuration automatically adapts for CI environments:
+
+- **Retries**: 2 retries on CI, 0 locally
+- **Workers**: Single worker on CI, parallel locally
+- **Reporter**: GitHub Actions reporter on CI, HTML locally
+- **Test timeout**: 10 seconds on CI, 5 seconds locally
+- **Max failures**: Stop after 1 failure on CI
+
+<Warning>
+  The `forbidOnly` setting prevents `test.only()` from being committed to CI, ensuring all tests run.
+</Warning>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Type-Safe Routes" icon="route">
+    Use `page.to()` instead of `page.goto()` to get TypeScript autocomplete for routes.
+  </Card>
+  
+  <Card title="Reuse Authentication" icon="lock">
+    Use `test.use({ storageState })` to reuse authenticated sessions and speed up tests.
+  </Card>
+  
+  <Card title="Wait for Navigation" icon="clock">
+    Always use `waitForURL()` after actions that trigger navigation.
+  </Card>
+  
+  <Card title="Use Test IDs" icon="hashtag">
+    Use `data-testid` attributes for critical elements that need stable selectors.
+  </Card>
+</CardGroup>
+
+## Debugging E2E Tests
+
+<Tip>
+  Run `pnpm e2e:ui` to open Playwright's UI mode, which provides:
+  - Visual step-by-step test execution
+  - Time travel debugging
+  - DOM snapshots
+  - Network activity monitoring
+  - Test trace viewer
+</Tip>
+
+You can also debug with traces:
+
+```bash
+# Generate trace on first retry
+playwright test --trace on-first-retry
+
+# Always generate trace
+playwright test --trace on
+```
+
+View traces with:
+
+```bash
+playwright show-report
+```
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Unit Testing" icon="flask" href="/development/testing">
+    Learn about unit and browser testing with Vitest
+  </Card>
+  
+  <Card title="Linting" icon="code" href="/development/linting">
+    Explore code quality tools and configuration
+  </Card>
+</CardGroup>

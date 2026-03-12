@@ -1,0 +1,506 @@
+---
+title: File Uploads
+description: Learn how to handle file uploads with Better Upload, S3/MinIO storage, and custom upload routes
+---
+
+Start UI [web] uses [Better Upload](https://better-upload.com) for file uploads with S3-compatible storage (MinIO in development).
+
+## Overview
+
+The file upload system includes:
+
+- **Better Upload**: Type-safe file upload client and server
+- **S3 Storage**: Production-ready object storage
+- **MinIO**: S3-compatible storage for local development
+- **Upload Routes**: Custom routes with authentication and validation
+- **React Components**: Pre-built upload button component
+
+## Setup
+
+### Environment Configuration
+
+Configure S3/MinIO in your `.env` file:
+
+```bash .env
+# S3 Configuration
+S3_BUCKET_NAME="default"
+S3_HOST="127.0.0.1:9000"
+S3_ACCESS_KEY_ID="startui-access-key"
+S3_SECRET_ACCESS_KEY="startui-secret-key"
+S3_SECURE=false
+S3_FORCE_PATH_STYLE=true
+VITE_S3_BUCKET_PUBLIC_URL="http://127.0.0.1:9000/default"
+
+# MinIO (Development)
+DOCKER_MINIO_API_PORT="9000"
+DOCKER_MINIO_UI_PORT="9001"
+DOCKER_MINIO_USERNAME="minioadmin"
+DOCKER_MINIO_PASSWORD="minioadmin"
+```
+
+### Start MinIO (Development)
+
+MinIO runs in Docker for local development:
+
+```bash
+docker-compose up -d
+```
+
+Access MinIO Console at: `http://localhost:9001`
+
+<Info>
+In production, replace MinIO with AWS S3, Cloudflare R2, or any S3-compatible storage.
+</Info>
+
+## Upload Client
+
+Configure the upload client in `src/server/s3.ts`:
+
+```ts src/server/s3.ts
+import { custom } from '@better-upload/server/clients';
+import { envServer } from '@/env/server';
+
+export const uploadClient = custom({
+  host: envServer.S3_HOST,
+  accessKeyId: envServer.S3_ACCESS_KEY_ID,
+  secretAccessKey: envServer.S3_SECRET_ACCESS_KEY,
+  region: envServer.S3_REGION,
+  forcePathStyle: envServer.S3_FORCE_PATH_STYLE,
+  secure: envServer.S3_SECURE,
+});
+```
+
+## Upload Routes
+
+Define custom upload routes with validation and authentication.
+
+### Route Configuration
+
+```ts src/routes/api/upload.ts
+import { handleRequest, type Router } from '@better-upload/server';
+import { uploadClient } from '@/server/s3';
+import { bookCover } from '@/server/upload/book-cover';
+
+const router = {
+  client: uploadClient,
+  bucketName: envServer.S3_BUCKET_NAME,
+  routes: {
+    bookCover,
+  },
+} as const satisfies Router;
+
+export type UploadRoutes = keyof typeof router.routes;
+
+export const Route = createFileRoute('/api/upload')({
+  server: {
+    handlers: {
+      POST: ({ request }) => {
+        if (envClient.VITE_IS_DEMO) {
+          return new Response('Demo Mode', { status: 405 });
+        }
+        return handleRequest(request, router);
+      },
+    },
+  },
+});
+```
+
+### Create Upload Route
+
+Example: Book cover upload with authentication and file type validation
+
+```ts src/server/upload/book-cover.ts
+import { RejectUpload, route } from '@better-upload/server';
+import { auth } from '@/server/auth';
+
+export const bookCover = route({
+  fileTypes: ['image/jpeg', 'image/png', 'image/webp'],
+  maxFileSize: 1024 * 1024 * 100, // 100MB
+  
+  onBeforeUpload: async ({ req, file }) => {
+    // Check authentication
+    const session = await auth.api.getSession(req);
+    if (!session?.user) {
+      throw new RejectUpload(
+        i18n.t('book:manager.uploadErrors.NOT_AUTHENTICATED')
+      );
+    }
+
+    // Check permissions
+    const canUpdateBookCover = await auth.api.userHasPermission({
+      body: {
+        userId: session.user.id,
+        permissions: {
+          book: ['create', 'update'],
+        },
+      },
+    });
+
+    if (!canUpdateBookCover.success) {
+      throw new RejectUpload(
+        i18n.t('book:manager.uploadErrors.UNAUTHORIZED')
+      );
+    }
+
+    // Generate unique file key
+    const fileExtension = file.type.split('/').at(-1) as string;
+    return {
+      objectInfo: {
+        key: `books/${crypto.randomUUID()}.${fileExtension}`,
+      },
+    };
+  },
+});
+```
+
+<Note>
+The `onBeforeUpload` hook runs before the file is uploaded, allowing you to validate, authenticate, and customize the upload.
+</Note>
+
+## Upload Component
+
+Use the `UploadButton` component to upload files:
+
+```tsx src/components/upload/upload-button.tsx
+import { uploadFile } from '@better-upload/client';
+import { UploadButton } from '@/components/upload/upload-button';
+
+<UploadButton
+  uploadRoute="bookCover"
+  inputProps={{
+    accept: 'image/jpeg,image/png,image/webp',
+  }}
+  onSuccess={(file) => {
+    console.log('Uploaded:', file.objectInfo.key);
+    // Update form or state with file key
+  }}
+  onError={(error) => {
+    toast.error('Upload failed');
+  }}
+>
+  Upload Cover
+</UploadButton>
+```
+
+### Component Props
+
+```tsx
+export type UploadButtonProps = {
+  uploadRoute: UploadRoutes;           // Route name from upload router
+  onSuccess?: (file: FileUploadInfo<'complete'>) => void;
+  onUploadStateChange?: (file: FileUploadInfo) => void;
+  onError?: (error: Error | ClientUploadError) => void;
+  inputProps?: ComponentProps<'input'>; // Native input props
+  icon?: ReactElement;                  // Custom icon
+  getMetadata?: (file: File) => Record<string, any>; // Custom metadata
+};
+```
+
+## Form Integration
+
+Integrate file uploads into forms:
+
+```tsx src/features/book/manager/form-book-cover.tsx
+import { useFormContext, useWatch } from 'react-hook-form';
+import { UploadButton } from '@/components/upload/upload-button';
+import { BookCover } from '@/features/book/book-cover';
+
+export const FormBookCover = () => {
+  const form = useFormContext<FormFieldsBook>();
+  const coverId = useWatch({
+    name: 'coverId',
+    control: form.control,
+  });
+
+  return (
+    <FormField>
+      <FormFieldController
+        control={form.control}
+        type="custom"
+        name="coverId"
+        render={({ field }) => (
+          <>
+            <div className="relative mb-2">
+              {/* Preview */}
+              <BookCover
+                book={{ coverId: field.value }}
+                className="opacity-60"
+              />
+
+              {/* Upload Controls */}
+              <div className="absolute top-1/2 left-1/2 flex gap-2">
+                <UploadButton
+                  uploadRoute="bookCover"
+                  inputProps={{
+                    accept: 'image/jpeg,image/png,image/webp',
+                  }}
+                  onSuccess={(file) => {
+                    field.onChange(file.objectInfo.key);
+                  }}
+                  onError={() => {
+                    toast.error('Upload failed');
+                  }}
+                />
+                
+                {field.value && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => field.onChange(undefined)}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                )}
+              </div>
+            </div>
+            <FormFieldError />
+          </>
+        )}
+      />
+    </FormField>
+  );
+};
+```
+
+## Upload States
+
+Track upload progress and states:
+
+```tsx
+const [uploadState, setUploadState] = useState<UploadStatus>('idle');
+
+<UploadButton
+  uploadRoute="bookCover"
+  onUploadStateChange={(file) => {
+    setUploadState(file.status);
+    
+    switch (file.status) {
+      case 'uploading':
+        console.log('Progress:', file.progress);
+        break;
+      case 'complete':
+        console.log('Uploaded:', file.objectInfo.key);
+        break;
+      case 'error':
+        console.log('Error:', file.error);
+        break;
+    }
+  }}
+/>
+```
+
+### Upload Status Types
+
+- `'idle'` - Not started
+- `'uploading'` - Upload in progress
+- `'complete'` - Upload successful
+- `'error'` - Upload failed
+
+## Direct Upload API
+
+Use the `uploadFile` function directly for custom implementations:
+
+```tsx
+import { uploadFile } from '@better-upload/client';
+
+const handleUpload = async (file: File) => {
+  const result = await uploadFile({
+    file,
+    route: 'bookCover',
+    onFileStateChange: ({ file }) => {
+      console.log('Status:', file.status);
+      console.log('Progress:', file.progress);
+    },
+    metadata: {
+      userId: user.id,
+      bookId: book.id,
+    },
+  });
+
+  if (result.file.status === 'complete') {
+    console.log('File key:', result.file.objectInfo.key);
+  }
+};
+```
+
+## File URL Generation
+
+Generate public URLs for uploaded files:
+
+```tsx
+import { envClient } from '@/env/client';
+
+function getFileUrl(fileKey: string) {
+  return `${envClient.VITE_S3_BUCKET_PUBLIC_URL}/${fileKey}`;
+}
+
+// Usage
+const coverUrl = getFileUrl(book.coverId);
+
+<img src={coverUrl} alt="Book cover" />
+```
+
+## Validation
+
+### File Type Validation
+
+```ts
+export const bookCoverAcceptedFileTypes = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+] as const;
+
+export const bookCover = route({
+  fileTypes: bookCoverAcceptedFileTypes,
+  // ...
+});
+```
+
+### File Size Validation
+
+```ts
+export const bookCover = route({
+  maxFileSize: 1024 * 1024 * 10, // 10MB
+  // ...
+});
+```
+
+### Custom Validation
+
+```ts
+export const bookCover = route({
+  onBeforeUpload: async ({ file }) => {
+    // Validate file name
+    if (file.name.includes('..')) {
+      throw new RejectUpload('Invalid file name');
+    }
+
+    // Validate dimensions (for images)
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    await img.decode();
+
+    if (img.width < 300 || img.height < 400) {
+      throw new RejectUpload('Image too small (min 300x400)');
+    }
+
+    return { objectInfo: { key: `books/${file.name}` } };
+  },
+});
+```
+
+## Multiple File Uploads
+
+Handle multiple file uploads:
+
+```tsx
+const [files, setFiles] = useState<string[]>([]);
+
+<input
+  type="file"
+  multiple
+  onChange={async (e) => {
+    const uploads = Array.from(e.target.files || []).map((file) =>
+      uploadFile({
+        file,
+        route: 'bookCover',
+      })
+    );
+
+    const results = await Promise.all(uploads);
+    const keys = results.map((r) => r.file.objectInfo.key);
+    setFiles(keys);
+  }}
+/>
+```
+
+## Production Setup
+
+### AWS S3
+
+```ts
+import { s3 } from '@better-upload/server/clients';
+
+export const uploadClient = s3({
+  region: 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+});
+```
+
+### Cloudflare R2
+
+```ts
+import { s3 } from '@better-upload/server/clients';
+
+export const uploadClient = s3({
+  region: 'auto',
+  endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  },
+});
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Validate on Server" icon="shield-check">
+    Always validate file types and sizes in the upload route, not just the client.
+  </Card>
+
+  <Card title="Use Unique Keys" icon="key">
+    Generate unique file keys (UUIDs) to prevent overwrites and enable cache busting.
+  </Card>
+
+  <Card title="Check Permissions" icon="user-shield">
+    Verify user authentication and authorization before allowing uploads.
+  </Card>
+
+  <Card title="Handle Errors" icon="triangle-exclamation">
+    Provide clear error messages for failed uploads and validation errors.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="MinIO not accessible">
+    Verify MinIO is running:
+    
+    ```bash
+    docker ps
+    ```
+    
+    Access MinIO Console at `http://localhost:9001` and ensure the bucket exists.
+  </Accordion>
+
+  <Accordion title="CORS errors">
+    Configure CORS in MinIO or S3 to allow your app's origin:
+    
+    ```json
+    {
+      "AllowedOrigins": ["http://localhost:3000"],
+      "AllowedMethods": ["GET", "PUT", "POST", "DELETE"],
+      "AllowedHeaders": ["*"]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Upload rejected">
+    Check:
+    1. File type matches `fileTypes` array
+    2. File size is under `maxFileSize`
+    3. User has required permissions
+    4. Network connectivity to S3/MinIO
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Learn about [Forms](/features/forms) to integrate uploads with validation
+- Set up [Authentication](/features/authentication) for protected uploads
+- Configure [Database](/features/database) to store file metadata

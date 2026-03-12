@@ -1,0 +1,336 @@
+---
+title: 'Theming'
+description: 'Customize colors, dark mode, and design tokens in your application'
+icon: 'palette'
+---
+
+Start UI [web] uses Tailwind CSS 4 with CSS variables for a flexible, customizable theming system. The theme supports light and dark modes with automatic OS detection.
+
+## Theme Configuration
+
+The theme is defined in `src/styles/app.css` using CSS variables and Tailwind's `@theme` directive.
+
+### Color System
+
+The project uses OKLCH color space for better perceptual uniformity:
+
+```css
+@theme {
+  --font-sans:
+    'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  /* Neutral Colors */
+  --color-neutral-50: oklch(0.985 0 0);
+  --color-neutral-100: oklch(0.967 0.001 286.375);
+  --color-neutral-200: oklch(0.92 0.004 286.32);
+  --color-neutral-300: oklch(0.871 0.006 286.286);
+  --color-neutral-400: oklch(0.705 0.015 286.067);
+  --color-neutral-500: oklch(0.552 0.016 285.938);
+  --color-neutral-600: oklch(0.442 0.017 285.786);
+  --color-neutral-700: oklch(0.37 0.013 285.805);
+  --color-neutral-800: oklch(0.274 0.006 286.033);
+  --color-neutral-900: oklch(0.21 0.006 285.885);
+  --color-neutral-950: oklch(0.141 0.005 285.823);
+
+  /* Semantic Colors */
+  --color-negative-50: oklch(0.971 0.013 17.38);
+  --color-negative-500: oklch(0.637 0.237 25.331);
+  --color-negative-600: oklch(0.577 0.245 27.325);
+  --color-negative-950: oklch(0.258 0.092 26.042);
+
+  --color-warning-50: oklch(0.987 0.022 95.277);
+  --color-warning-500: oklch(0.769 0.188 70.08);
+  --color-warning-600: oklch(0.666 0.179 58.318);
+  --color-warning-950: oklch(0.279 0.077 45.635);
+
+  --color-positive-50: oklch(0.982 0.018 155.826);
+  --color-positive-500: oklch(0.723 0.219 149.579);
+  --color-positive-600: oklch(0.627 0.194 149.214);
+  --color-positive-950: oklch(0.266 0.065 152.934);
+}
+```
+
+## Design Tokens
+
+Semantic design tokens map to color values for light and dark modes:
+
+<CodeGroup>
+```css Light Mode
+:root {
+  --background: var(--color-white);
+  --foreground: var(--color-neutral-950);
+  --card: var(--color-white);
+  --card-foreground: var(--color-neutral-950);
+  --primary: var(--color-neutral-900);
+  --primary-foreground: var(--color-neutral-50);
+  --secondary: var(--color-neutral-100);
+  --secondary-foreground: var(--color-neutral-900);
+  --muted: var(--color-neutral-100);
+  --muted-foreground: var(--color-neutral-500);
+  --accent: var(--color-neutral-100);
+  --accent-foreground: var(--color-neutral-900);
+  --destructive: var(--color-negative-600);
+  --destructive-foreground: var(--color-negative-50);
+  --border: var(--color-neutral-200);
+  --input: var(--color-neutral-200);
+  --ring: var(--color-neutral-300);
+  --radius: 0.625rem;
+}
+```
+
+```css Dark Mode
+.dark {
+  color-scheme: dark;
+
+  --background: var(--color-neutral-950);
+  --foreground: var(--color-neutral-50);
+  --card: var(--color-neutral-900);
+  --card-foreground: var(--color-neutral-50);
+  --primary: var(--color-neutral-50);
+  --primary-foreground: var(--color-neutral-900);
+  --secondary: var(--color-neutral-800);
+  --secondary-foreground: var(--color-neutral-50);
+  --muted: var(--color-neutral-900);
+  --muted-foreground: var(--color-neutral-400);
+  --accent: var(--color-neutral-800);
+  --accent-foreground: var(--color-neutral-50);
+  --destructive: var(--color-negative-700);
+  --destructive-foreground: var(--color-white);
+  --border: var(--color-neutral-800);
+  --input: var(--color-neutral-800);
+  --ring: var(--color-neutral-600);
+}
+```
+</CodeGroup>
+
+## Dark Mode Implementation
+
+Dark mode is implemented using [next-themes](https://github.com/pacocoursey/next-themes) with class-based theme switching.
+
+### Theme Provider
+
+The `ThemeProvider` wraps your application in `src/providers.tsx`:
+
+```tsx
+import { ThemeProvider } from 'next-themes';
+import type { ReactNode } from 'react';
+
+export const Providers = (props: { children: ReactNode }) => {
+  return (
+    <ThemeProvider
+      attribute="class"
+      storageKey="theme"
+      disableTransitionOnChange
+    >
+      {props.children}
+    </ThemeProvider>
+  );
+};
+```
+
+<Info>
+The `attribute="class"` setting adds a `.dark` class to the root element when dark mode is active.
+</Info>
+
+### Theme Switcher Component
+
+The built-in `ThemeSwitcher` component allows users to toggle between light, dark, and system themes:
+
+```tsx
+import { ThemeSwitcher } from '@/components/ui/theme-switcher';
+
+export function Header() {
+  return (
+    <header>
+      <ThemeSwitcher />
+      {/* Icon only variant */}
+      <ThemeSwitcher iconOnly />
+    </header>
+  );
+}
+```
+
+### Using Theme in Components
+
+Access the current theme using the `useTheme` hook:
+
+```tsx
+import { useTheme } from 'next-themes';
+import { MoonIcon, SunIcon, SunMoonIcon } from 'lucide-react';
+
+export function CustomThemeToggle() {
+  const { theme, setTheme } = useTheme();
+
+  return (
+    <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+      {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+    </button>
+  );
+}
+```
+
+## Custom Dark Mode Variants
+
+Tailwind is configured with a custom dark mode variant in `src/styles/app.css`:
+
+```css
+@custom-variant dark (&:is(.dark *));
+```
+
+This allows you to use the `dark:` prefix in your components:
+
+```tsx
+<div className="bg-white text-black dark:bg-neutral-900 dark:text-white">
+  Content that adapts to dark mode
+</div>
+```
+
+## Typography Scale
+
+Custom text sizes extend Tailwind's defaults:
+
+```css
+@theme {
+  --text-2xs: 0.625rem; /* 10px */
+  --text-3xs: 0.5rem;   /* 8px */
+}
+```
+
+Use them with Tailwind classes:
+
+```tsx
+<p className="text-2xs">Extra small text</p>
+<p className="text-3xs">Ultra small text</p>
+```
+
+## Custom Breakpoints
+
+Additional responsive breakpoints:
+
+```css
+@theme {
+  --breakpoint-2xs: 24rem; /* 384px */
+  --breakpoint-xs: 32rem;  /* 512px */
+}
+```
+
+```tsx
+<div className="grid grid-cols-1 2xs:grid-cols-2 xs:grid-cols-3 sm:grid-cols-4">
+  {/* Responsive grid */}
+</div>
+```
+
+## Safe Area Insets
+
+For mobile PWA support, safe area insets are available:
+
+```css
+@theme {
+  --spacing-safe-top: env(safe-area-inset-top);
+  --spacing-safe-bottom: env(safe-area-inset-bottom);
+  --spacing-safe-left: env(safe-area-inset-left);
+  --spacing-safe-right: env(safe-area-inset-right);
+}
+```
+
+```tsx
+<div className="pb-safe-bottom">
+  Content with safe area padding
+</div>
+```
+
+## Customizing Colors
+
+To customize the color scheme:
+
+<Steps>
+  <Step title="Update Color Palette">
+    Modify the OKLCH values in `src/styles/app.css`:
+    ```css
+    @theme {
+      --color-neutral-900: oklch(0.25 0.01 290); /* Your custom dark color */
+    }
+    ```
+  </Step>
+  <Step title="Update Design Tokens">
+    Map your colors to semantic tokens:
+    ```css
+    :root {
+      --primary: var(--color-blue-600);
+      --primary-foreground: var(--color-white);
+    }
+    ```
+  </Step>
+  <Step title="Test Both Themes">
+    Verify your changes work in both light and dark modes using the theme switcher.
+  </Step>
+</Steps>
+
+<Warning>
+When using OKLCH colors, ensure you maintain sufficient contrast ratios for accessibility (minimum 4.5:1 for normal text, 3:1 for large text).
+</Warning>
+
+## Component-Specific Theming
+
+Some components have their own theme tokens:
+
+```css
+:root {
+  --sidebar: var(--color-white);
+  --sidebar-foreground: var(--color-neutral-600);
+  --sidebar-primary: var(--color-neutral-900);
+  --sidebar-primary-foreground: var(--color-neutral-50);
+  --sidebar-accent: var(--color-neutral-100);
+  --sidebar-accent-foreground: var(--color-neutral-900);
+  --sidebar-border: var(--color-neutral-200);
+  --sidebar-ring: var(--color-neutral-300);
+}
+
+.dark {
+  --sidebar: var(--color-neutral-900);
+  --sidebar-foreground: var(--color-neutral-300);
+  /* ... */
+}
+```
+
+## Base Styles
+
+Global base styles are applied in `src/styles/app.css`:
+
+```css
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-neutral-50 text-foreground dark:bg-neutral-950;
+  }
+}
+```
+
+## Color Reference
+
+Use these Tailwind classes for themed colors:
+
+| Purpose | Light | Dark |
+|---------|-------|------|
+| Background | `bg-background` | Automatically switches |
+| Foreground | `text-foreground` | Automatically switches |
+| Primary | `bg-primary text-primary-foreground` | Automatically switches |
+| Secondary | `bg-secondary text-secondary-foreground` | Automatically switches |
+| Muted | `bg-muted text-muted-foreground` | Automatically switches |
+| Accent | `bg-accent text-accent-foreground` | Automatically switches |
+| Destructive | `bg-destructive text-destructive-foreground` | Automatically switches |
+| Border | `border border-border` | Automatically switches |
+| Card | `bg-card text-card-foreground` | Automatically switches |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Styling Guide" icon="paintbrush" href="/components/styling">
+    Learn styling patterns and best practices
+  </Card>
+  <Card title="Component Overview" icon="puzzle-piece" href="/components/overview">
+    Explore available UI components
+  </Card>
+</CardGroup>

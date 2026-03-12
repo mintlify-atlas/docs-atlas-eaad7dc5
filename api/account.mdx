@@ -1,0 +1,373 @@
+---
+title: Account API
+description: Manage authenticated user profiles and onboarding
+icon: user
+---
+
+## Overview
+
+The Account API provides endpoints for users to manage their own profile information and complete the onboarding process. All endpoints require authentication.
+
+<Note>
+  Account endpoints allow users to manage their **own** profile. For admin user management, see the [User API](/api/user).
+</Note>
+
+## Endpoints
+
+### Submit Onboarding
+
+Complete the user onboarding process by providing required profile information.
+
+```typescript
+POST /account/submit-onboarding
+```
+
+**Source**: `src/server/routers/account.ts:10-29`
+
+#### Authentication
+
+<ParamField path="permissions" type="null">
+  Requires authentication but no specific permissions
+</ParamField>
+
+#### Request Body
+
+<ParamField body="name" type="string" required>
+  User's full name
+</ParamField>
+
+#### Response
+
+<ResponseField name="void" type="void">
+  Returns void on success. The user's `onboardedAt` timestamp is set to the current date.
+</ResponseField>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+
+function OnboardingForm() {
+  const { mutate, isPending } = orpc.account.submitOnboarding.useMutation({
+    onSuccess: () => {
+      // Redirect to dashboard or home page
+      router.navigate({ to: '/' });
+    },
+  });
+
+  const handleSubmit = (values: { name: string }) => {
+    mutate({ input: { name: values.name } });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input name="name" placeholder="Enter your name" required />
+      <button type="submit" disabled={isPending}>
+        Complete Onboarding
+      </button>
+    </form>
+  );
+}
+```
+
+```typescript REST API
+const response = await fetch('/api/rest/account/submit-onboarding', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  credentials: 'include', // Include auth cookie
+  body: JSON.stringify({
+    name: 'John Doe',
+  }),
+});
+
+if (!response.ok) {
+  const error = await response.json();
+  console.error('Onboarding failed:', error);
+}
+```
+
+```bash cURL
+curl -X POST https://your-app.com/api/rest/account/submit-onboarding \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "name": "John Doe"
+  }'
+```
+
+</CodeGroup>
+
+#### Database Operation
+
+This endpoint updates the authenticated user's record:
+
+```typescript
+await context.db.user.update({
+  where: { id: context.user.id },
+  data: {
+    name: input.name,
+    onboardedAt: new Date(), // Marks onboarding as complete
+  },
+});
+```
+
+---
+
+### Update Account Info
+
+Update the authenticated user's profile information.
+
+```typescript
+POST /account/info
+```
+
+**Source**: `src/server/routers/account.ts:31-53`
+
+#### Authentication
+
+<ParamField path="permissions" type="null">
+  Requires authentication but no specific permissions
+</ParamField>
+
+#### Request Body
+
+<ParamField body="name" type="string" required>
+  Updated user name
+</ParamField>
+
+#### Response
+
+<ResponseField name="void" type="void">
+  Returns void on success
+</ResponseField>
+
+#### Code Example
+
+<CodeGroup>
+
+```typescript React Query
+import { orpc } from '@/lib/orpc/client';
+import { toast } from '@/components/ui/use-toast';
+
+function ProfileForm() {
+  const { mutate, isPending } = orpc.account.updateInfo.useMutation({
+    onSuccess: () => {
+      toast({
+        title: 'Profile updated',
+        description: 'Your profile has been updated successfully.',
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Update failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleSubmit = (values: { name: string }) => {
+    mutate({ input: { name: values.name } });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input name="name" placeholder="Your name" required />
+      <button type="submit" disabled={isPending}>
+        {isPending ? 'Saving...' : 'Update Profile'}
+      </button>
+    </form>
+  );
+}
+```
+
+```typescript REST API
+const response = await fetch('/api/rest/account/info', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  credentials: 'include',
+  body: JSON.stringify({
+    name: 'Jane Smith',
+  }),
+});
+
+if (!response.ok) {
+  throw new Error('Failed to update profile');
+}
+```
+
+```bash cURL
+curl -X POST https://your-app.com/api/rest/account/info \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "name": "Jane Smith"
+  }'
+```
+
+</CodeGroup>
+
+#### Database Operation
+
+```typescript
+await context.db.user.update({
+  where: { id: context.user.id },
+  data: {
+    name: input.name ?? '',
+  },
+});
+```
+
+<Note>
+  If `name` is null or undefined, it will be saved as an empty string.
+</Note>
+
+---
+
+## Schema Definitions
+
+### User Schema (Partial)
+
+The account endpoints use fields from the User schema:
+
+```typescript
+import { z } from 'zod';
+import { zu } from '@/lib/zod/zod-utils';
+
+export const zUser = () =>
+  z.object({
+    id: z.string(),
+    name: zu.fieldText.nullish(),
+    email: zu.fieldText.required().pipe(
+      z.email({
+        error: (issue) =>
+          issue.input
+            ? t('user:common.email.invalid')
+            : t('user:common.email.required'),
+      })
+    ),
+    emailVerified: z.boolean(),
+    role: zRole().nullish(),
+    image: z.string().nullish(),
+    createdAt: z.date(),
+    updatedAt: z.date(),
+    onboardedAt: z.date().nullish(),
+  });
+```
+
+### Onboarding Form Schema
+
+```typescript
+export const zFormFieldsOnboarding = () =>
+  z.object({
+    name: zu.fieldText.required(),
+  });
+```
+
+**Source**: `src/features/auth/schema.ts:38-41`
+
+---
+
+## Error Handling
+
+### Common Errors
+
+<ResponseField name="UNAUTHORIZED" type="401">
+  User is not authenticated. Session cookie or bearer token is missing or invalid.
+</ResponseField>
+
+<ResponseField name="BAD_REQUEST" type="400">
+  Invalid input data. Check that `name` is provided and meets validation requirements.
+</ResponseField>
+
+<ResponseField name="METHOD_NOT_SUPPORTED" type="405">
+  Demo mode is enabled. Write operations are disabled.
+</ResponseField>
+
+<ResponseField name="INTERNAL_SERVER_ERROR" type="500">
+  Database error or unexpected server error.
+</ResponseField>
+
+### Error Example
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Authentication required",
+    "status": 401
+  }
+}
+```
+
+---
+
+## Use Cases
+
+### Onboarding Flow
+
+1. User signs up or logs in via Better Auth
+2. Check if `user.onboardedAt` is null
+3. If null, redirect to onboarding page
+4. User submits name via `submitOnboarding`
+5. `onboardedAt` is set, user is redirected to main app
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+export function useOnboardingStatus() {
+  const { data: session } = orpc.auth.getSession.useQuery();
+  
+  const needsOnboarding = session?.user && !session.user.onboardedAt;
+  
+  return { needsOnboarding };
+}
+```
+
+### Profile Update
+
+Allow users to update their display name in settings:
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { zFormFieldsOnboarding } from '@/features/auth/schema';
+
+export function ProfileSettings() {
+  const { data: session } = orpc.auth.getSession.useQuery();
+  const { mutate } = orpc.account.updateInfo.useMutation();
+  
+  const form = useForm({
+    resolver: zodResolver(zFormFieldsOnboarding()),
+    defaultValues: {
+      name: session?.user?.name ?? '',
+    },
+  });
+  
+  const onSubmit = (values: { name: string }) => {
+    mutate({ input: values });
+  };
+  
+  return <form onSubmit={form.handleSubmit(onSubmit)}>{/* ... */}</form>;
+}
+```
+
+---
+
+## Related APIs
+
+<CardGroup cols={2}>
+  <Card title="User API" icon="users" href="/api/user">
+    Admin endpoints for managing all users
+  </Card>
+  <Card title="Authentication" icon="lock" href="/features/authentication">
+    Learn about Better Auth integration
+  </Card>
+</CardGroup>
